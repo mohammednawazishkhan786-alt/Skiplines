@@ -10,8 +10,11 @@ import {
   Loader2,
   RefreshCw,
   Users,
+  XCircle,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
+import { openCashfreeSubscriptionCheckout } from "@/lib/cashfree-checkout";
+import { hasDashboardAccess } from "@/lib/subscription";
 import type { Clinic, QueueEntry } from "@/lib/types";
 
 type DashboardData = {
@@ -28,6 +31,7 @@ function DashboardContent() {
   const [calling, setCalling] = useState(false);
   const [emergencyId, setEmergencyId] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +71,93 @@ function DashboardContent() {
       setLoading(false);
     }
   }, [clinicId]);
+
+  const verifyPayment = useCallback(
+    async (orderId: string) => {
+      if (!clinicId) return;
+
+      setMessage(null);
+      setError(null);
+
+      try {
+        const response = await fetch("/api/cashfree/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clinic_id: clinicId, order_id: orderId }),
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Payment verification failed.");
+        }
+
+        setMessage("Subscription activated — thank you for your payment.");
+        await loadDashboard();
+      } catch (verifyError) {
+        setError(
+          verifyError instanceof Error
+            ? verifyError.message
+            : "Payment verification failed.",
+        );
+      }
+    },
+    [clinicId, loadDashboard],
+  );
+
+  const verifySubscription = useCallback(
+    async (subscriptionId: string) => {
+      if (!clinicId) return;
+
+      setMessage(null);
+      setError(null);
+
+      try {
+        const response = await fetch("/api/cashfree/verify-subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clinic_id: clinicId,
+            subscription_id: subscriptionId,
+          }),
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Subscription verification failed.");
+        }
+
+        setMessage(
+          payload.message ?? "Your 7-day free trial is now active!",
+        );
+        await loadDashboard();
+      } catch (verifyError) {
+        setError(
+          verifyError instanceof Error
+            ? verifyError.message
+            : "Subscription verification failed.",
+        );
+      }
+    },
+    [clinicId, loadDashboard],
+  );
+
+  useEffect(() => {
+    const subscription = searchParams.get("subscription");
+    const subscriptionId = searchParams.get("subscription_id");
+
+    if (subscription === "success" && subscriptionId && clinicId) {
+      void verifySubscription(subscriptionId);
+    }
+  }, [searchParams, clinicId, verifySubscription]);
+
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    const orderId = searchParams.get("order_id");
+
+    if (payment === "success" && orderId && clinicId) {
+      void verifyPayment(orderId);
+    }
+  }, [searchParams, clinicId, verifyPayment]);
 
   useEffect(() => {
     void loadDashboard();
@@ -141,14 +232,60 @@ function DashboardContent() {
     }
   }
 
-  async function handleSubscribe() {
+  async function handleSubscribe(skipTrial = false) {
     if (!clinicId) return;
 
     setSubscribing(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/razorpay/subscription", {
+      const response = await fetch("/api/cashfree/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clinic_id: clinicId, skip_trial: skipTrial }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Checkout failed.");
+      }
+
+      if (payload.subscription_session_id) {
+        await openCashfreeSubscriptionCheckout(
+          payload.subscription_session_id,
+        );
+        return;
+      }
+
+      setMessage(
+        payload.message ??
+          `Subscription status: ${payload.status ?? "pending"}`,
+      );
+      await loadDashboard();
+    } catch (subscribeError) {
+      setError(
+        subscribeError instanceof Error
+          ? subscribeError.message
+          : "Checkout failed.",
+      );
+    } finally {
+      setSubscribing(false);
+    }
+  }
+
+  async function handleCancelSubscription() {
+    if (!clinicId) return;
+
+    const confirmed = window.confirm(
+      "Cancel your subscription? Your UPI mandate will be revoked and you won't be charged ₹999 after the trial.",
+    );
+    if (!confirmed) return;
+
+    setCancelling(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/cashfree/cancel-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clinic_id: clinicId }),
@@ -156,25 +293,19 @@ function DashboardContent() {
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Subscription failed.");
+        throw new Error(payload.error ?? "Cancellation failed.");
       }
 
-      if (payload.short_url) {
-        window.open(payload.short_url, "_blank");
-      }
-
-      setMessage(
-        `Subscription created — ₹999/month with 7-day free trial. Status: ${payload.status}`,
-      );
+      setMessage(payload.message ?? "Subscription cancelled.");
       await loadDashboard();
-    } catch (subscribeError) {
+    } catch (cancelError) {
       setError(
-        subscribeError instanceof Error
-          ? subscribeError.message
-          : "Subscription failed.",
+        cancelError instanceof Error
+          ? cancelError.message
+          : "Cancellation failed.",
       );
     } finally {
-      setSubscribing(false);
+      setCancelling(false);
     }
   }
 
@@ -214,6 +345,13 @@ function DashboardContent() {
 
   const { clinic, waiting, currentlyServing } = data;
   const estimatedWait = waiting.length * clinic.avg_time_per_patient;
+  const dashboardAccess = hasDashboardAccess(clinic);
+  const statusLabel = clinic.subscription_status.toUpperCase();
+  const canCancel =
+    clinic.cashfree_subscription_id &&
+    (statusLabel === "ACTIVE_TRIAL" || statusLabel === "ACTIVE");
+  const needsMandate = statusLabel === "PENDING_MANDATE";
+  const isExpired = statusLabel === "EXPIRED";
 
   return (
     <div className="space-y-6">
@@ -233,9 +371,80 @@ function DashboardContent() {
           {clinic.trial_ends_at
             ? ` · Trial ends ${new Date(clinic.trial_ends_at).toLocaleDateString()}`
             : ""}
+          {clinic.subscription_expires_at
+            ? ` · Renews until ${new Date(clinic.subscription_expires_at).toLocaleDateString()}`
+            : ""}
         </p>
       </div>
 
+      <div className="rounded-2xl border border-teal-200 bg-white p-8 shadow-sm">
+        <h2 className="text-lg font-semibold text-teal-950">
+          Billing &amp; Subscription
+        </h2>
+        <p className="mt-2 text-sm text-teal-800/80">
+          ₹999/month after 7-day free trial · ₹1 UPI mandate authorization
+          required · Cancel anytime before Day 7 to avoid charges.
+        </p>
+
+        {needsMandate ? (
+          <button
+            type="button"
+            onClick={() => void handleSubscribe(false)}
+            disabled={subscribing}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600 disabled:opacity-60"
+          >
+            {subscribing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CreditCard className="h-4 w-4" />
+            )}
+            Authorize ₹1 UPI Mandate — Start Free Trial
+          </button>
+        ) : null}
+
+        {isExpired ? (
+          <button
+            type="button"
+            onClick={() => void handleSubscribe(true)}
+            disabled={subscribing}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600 disabled:opacity-60"
+          >
+            {subscribing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CreditCard className="h-4 w-4" />
+            )}
+            Subscribe — ₹999/month (no trial)
+          </button>
+        ) : null}
+
+        {canCancel ? (
+          <button
+            type="button"
+            onClick={() => void handleCancelSubscription()}
+            disabled={cancelling}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-5 py-3 font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+          >
+            {cancelling ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            Cancel Subscription
+          </button>
+        ) : null}
+      </div>
+
+      {!dashboardAccess ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-900">
+          {needsMandate
+            ? "Complete your ₹1 UPI mandate authorization to unlock the queue dashboard."
+            : "Your subscription has expired. Renew to manage your patient queue."}
+        </div>
+      ) : null}
+
+      {dashboardAccess ? (
+        <>
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Now Serving"
@@ -275,22 +484,6 @@ function DashboardContent() {
             </>
           )}
         </button>
-
-        {!clinic.razorpay_subscription_id ? (
-          <button
-            type="button"
-            onClick={() => void handleSubscribe()}
-            disabled={subscribing}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-teal-200 px-5 py-3 font-medium text-teal-800 hover:bg-teal-50 disabled:opacity-60"
-          >
-            {subscribing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CreditCard className="h-4 w-4" />
-            )}
-            Subscribe — ₹999/month (7-day free trial)
-          </button>
-        ) : null}
 
         {message ? (
           <p className="mt-4 rounded-lg bg-teal-50 px-4 py-3 text-center font-medium text-teal-800">
@@ -361,6 +554,8 @@ function DashboardContent() {
           </ul>
         )}
       </div>
+        </>
+      ) : null}
     </div>
   );
 }

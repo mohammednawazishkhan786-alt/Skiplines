@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
+import { withSentryApiRoute } from "@/lib/sentry-api";
 import { createClient } from "@/lib/supabase/server";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export const GET = withSentryApiRoute(
+  "GET",
+  "/api/clinics/[id]",
+  async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   const supabase = await createClient();
 
@@ -48,4 +52,5 @@ export async function GET(_request: Request, context: RouteContext) {
     waiting: waiting ?? [],
     currentlyServing: called,
   });
-}
+},
+);

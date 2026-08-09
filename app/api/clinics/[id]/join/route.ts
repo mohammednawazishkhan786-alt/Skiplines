@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
+import { getClinicOrThrow, getSubscriptionAccessError } from "@/lib/clinic-access";
 import { createClient } from "@/lib/supabase/server";
 import { createQueueEntry } from "@/lib/queue";
 
@@ -6,7 +8,10 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function POST(request: Request, context: RouteContext) {
+export const POST = withSentryApiRoute(
+  "POST",
+  "/api/clinics/[id]/join",
+  async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const supabase = await createClient();
 
@@ -23,14 +28,14 @@ export async function POST(request: Request, context: RouteContext) {
     // Optional body
   }
 
-  const { data: clinic, error: clinicError } = await supabase
-    .from("clinics")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const { clinic, error: clinicLookupError } = await getClinicOrThrow(id);
+  if (!clinic) {
+    return NextResponse.json({ error: clinicLookupError }, { status: 404 });
+  }
 
-  if (clinicError || !clinic) {
-    return NextResponse.json({ error: "Clinic not found." }, { status: 404 });
+  const accessError = getSubscriptionAccessError(clinic);
+  if (accessError) {
+    return NextResponse.json({ error: accessError }, { status: 403 });
   }
 
   try {
@@ -42,9 +47,11 @@ export async function POST(request: Request, context: RouteContext) {
 
     return NextResponse.json({ entry }, { status: 201 });
   } catch (error) {
+    captureApiError(error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Join failed." },
       { status: 500 },
     );
   }
-}
+},
+);

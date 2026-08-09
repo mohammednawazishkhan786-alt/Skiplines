@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Download, Loader2 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
+import { openCashfreeSubscriptionCheckout } from "@/lib/cashfree-checkout";
+import { DUPLICATE_PHONE_MESSAGE } from "@/lib/otp";
 
 type FormState = {
   doctor_name: string;
@@ -16,6 +18,8 @@ type FormState = {
   google_review_link: string;
 };
 
+type Step = "form" | "mandate" | "complete";
+
 const initialForm: FormState = {
   doctor_name: "",
   clinic_name: "",
@@ -27,19 +31,130 @@ const initialForm: FormState = {
   google_review_link: "",
 };
 
+function validateForm(form: FormState) {
+  if (!form.doctor_name.trim()) return "Doctor name is required.";
+  if (!form.clinic_name.trim()) return "Clinic name is required.";
+  if (!form.email.trim()) return "Email is required.";
+  if (!form.phone.trim()) return "WhatsApp mobile number is required.";
+  if (!form.clinic_hours.trim()) return "Clinic hours are required.";
+  return null;
+}
+
 export default function RegisterPage() {
   const [form, setForm] = useState<FormState>(initialForm);
+  const [step, setStep] = useState<Step>("form");
   const [loading, setLoading] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [otpSent, setOtpSent] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [clinicId, setClinicId] = useState<string | null>(null);
 
   function updateField(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+    if (field === "phone") {
+      setOtpSent(false);
+      setSessionToken(null);
+      setOtp("");
+      setDevOtp(null);
+      setOtpMessage(null);
+    }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSendOtp() {
+    const validationError = validateForm(form);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setOtpSending(true);
+    setError(null);
+    setOtpMessage(null);
+    setDevOtp(null);
+
+    try {
+      const response = await fetch("/api/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: form.phone }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        if (payload.code === "TRIAL_ALREADY_USED") {
+          setError(DUPLICATE_PHONE_MESSAGE);
+          return;
+        }
+        throw new Error(payload.error ?? "Could not send WhatsApp OTP.");
+      }
+
+      setOtpSent(true);
+      setOtpMessage(payload.message);
+      if (payload.dev_otp) {
+        setDevOtp(payload.dev_otp);
+      }
+    } catch (sendError) {
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Could not send WhatsApp OTP.",
+      );
+    } finally {
+      setOtpSending(false);
+    }
+  }
+
+  async function downloadStandee(id: string) {
+    const pdfResponse = await fetch(`/api/clinics/${id}/standee`);
+    if (!pdfResponse.ok) return;
+
+    const blob = await pdfResponse.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${form.clinic_name.replace(/\s+/g, "-").toLowerCase()}-whatsapp-standee.pdf`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function startMandateCheckout(id: string) {
+    const subscriptionResponse = await fetch("/api/cashfree/create-subscription", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clinic_id: id }),
+    });
+    const subscriptionPayload = await subscriptionResponse.json();
+
+    if (!subscriptionResponse.ok) {
+      throw new Error(
+        subscriptionPayload.error ?? "Could not start Cashfree mandate checkout.",
+      );
+    }
+
+    if (!subscriptionPayload.subscription_session_id) {
+      throw new Error(
+        "Cashfree did not return a subscription session. Please try again.",
+      );
+    }
+
+    await openCashfreeSubscriptionCheckout(
+      subscriptionPayload.subscription_session_id,
+    );
+  }
+
+  async function completeRegistrationAfterOtp(verifiedSessionToken: string) {
+    const validationError = validateForm(form);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
     setLoading(true);
+    setStep("mandate");
     setError(null);
 
     try {
@@ -48,6 +163,7 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          session_token: verifiedSessionToken,
           avg_time_per_patient: Number(form.avg_time_per_patient),
           consultation_fee: Number(form.consultation_fee),
         }),
@@ -56,6 +172,10 @@ export default function RegisterPage() {
       const payload = await response.json();
 
       if (!response.ok) {
+        if (payload.code === "TRIAL_ALREADY_USED") {
+          setError(DUPLICATE_PHONE_MESSAGE);
+          return;
+        }
         throw new Error(payload.error ?? "Registration failed.");
       }
 
@@ -63,32 +183,61 @@ export default function RegisterPage() {
       setClinicId(id);
       localStorage.setItem("skiplines_clinic_id", id);
 
-      await fetch("/api/razorpay/subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinic_id: id }),
-      }).catch(() => {
-        // Subscription can be set up later from dashboard
-      });
-
-      const pdfResponse = await fetch(`/api/clinics/${id}/standee`);
-      if (pdfResponse.ok) {
-        const blob = await pdfResponse.blob();
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = `${form.clinic_name.replace(/\s+/g, "-").toLowerCase()}-whatsapp-standee.pdf`;
-        anchor.click();
-        URL.revokeObjectURL(url);
-      }
+      await startMandateCheckout(id);
+      await downloadStandee(id);
+      setStep("complete");
     } catch (submitError) {
+      setStep("form");
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "Something went wrong.",
+          : "Registration failed.",
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    const validationError = validateForm(form);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (!otpSent) {
+      setError("Please send a WhatsApp OTP first.");
+      return;
+    }
+
+    setOtpVerifying(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: form.phone, otp }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "OTP verification failed.");
+      }
+
+      const token = payload.session_token as string;
+      setSessionToken(token);
+      setOtpMessage("WhatsApp verified. Opening ₹1 UPI mandate checkout...");
+
+      await completeRegistrationAfterOtp(token);
+    } catch (verifyError) {
+      setError(
+        verifyError instanceof Error
+          ? verifyError.message
+          : "OTP verification failed.",
+      );
+    } finally {
+      setOtpVerifying(false);
     }
   }
 
@@ -99,29 +248,38 @@ export default function RegisterPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-teal-950">Doctor Registration</h1>
           <p className="mt-2 text-teal-800/80">
-            Register your clinic to get a WhatsApp QR standee PDF and start
-            managing your patient queue — no hardware needed.
+            Verify your WhatsApp number, then authorize a ₹1 UPI mandate to
+            start your 7-day free trial.
           </p>
         </div>
 
-        {clinicId ? (
+        {step === "complete" && clinicId ? (
           <div className="rounded-2xl border border-teal-200 bg-white p-8 shadow-sm">
             <h2 className="text-xl font-semibold text-teal-950">
-              Registration successful
+              Registration submitted
             </h2>
             <p className="mt-2 text-teal-800/80">
-              Your WhatsApp QR standee PDF should have downloaded automatically.
-              Patients scan it to get a token via WhatsApp — zero hardware
-              required.
+              Complete the ₹1 UPI mandate in the Cashfree popup. Your trial
+              activates only after mandate authorization is confirmed. Your
+              WhatsApp standee uses your registered number:{" "}
+              <strong>{form.phone}</strong>.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <a
-                href={`/api/clinics/${clinicId}/standee`}
+              <button
+                type="button"
+                onClick={() => void downloadStandee(clinicId)}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600"
               >
                 <Download className="h-4 w-4" />
                 Download WhatsApp Standee
-              </a>
+              </button>
+              <button
+                type="button"
+                onClick={() => void startMandateCheckout(clinicId)}
+                className="inline-flex items-center justify-center rounded-xl border border-teal-200 px-5 py-3 font-medium text-teal-800 hover:bg-teal-50"
+              >
+                Re-open ₹1 Mandate Checkout
+              </button>
               <Link
                 href={`/dashboard?clinic=${clinicId}`}
                 className="inline-flex items-center justify-center rounded-xl border border-teal-200 px-5 py-3 font-medium text-teal-800 hover:bg-teal-50"
@@ -132,7 +290,10 @@ export default function RegisterPage() {
           </div>
         ) : (
           <form
-            onSubmit={handleSubmit}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleVerifyOtp();
+            }}
             className="space-y-5 rounded-2xl border border-teal-200 bg-white p-8 shadow-sm"
           >
             <Field
@@ -160,15 +321,58 @@ export default function RegisterPage() {
               placeholder="doctor@clinic.com"
               required
             />
-            <Field
-              label="Phone (WhatsApp)"
-              id="phone"
-              type="tel"
-              value={form.phone}
-              onChange={(value) => updateField("phone", value)}
-              placeholder="+91 98765 43210"
-              required
-            />
+
+            <div>
+              <Field
+                label="Phone (WhatsApp)"
+                id="phone"
+                type="tel"
+                value={form.phone}
+                onChange={(value) => updateField("phone", value)}
+                placeholder="Enter your 10-digit WhatsApp number"
+                required
+              />
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => void handleSendOtp()}
+                  disabled={otpSending || loading || !form.phone}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-200 px-4 py-2 text-sm font-medium text-teal-800 hover:bg-teal-50 disabled:opacity-60"
+                >
+                  {otpSending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Sending WhatsApp OTP...
+                    </>
+                  ) : (
+                    "Send WhatsApp OTP"
+                  )}
+                </button>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(event) => setOtp(event.target.value.replace(/\D/g, ""))}
+                  placeholder="Enter 6-digit OTP"
+                  className="flex-1 rounded-xl border border-teal-200 px-4 py-2 text-teal-950 outline-none ring-teal-500 focus:ring-2"
+                />
+              </div>
+              {otpSent ? (
+                <p className="mt-2 text-sm font-medium text-green-700">
+                  ✓ WhatsApp OTP sent — valid for 5 minutes
+                </p>
+              ) : null}
+              {otpMessage ? (
+                <p className="mt-2 text-sm text-teal-700">{otpMessage}</p>
+              ) : null}
+              {devOtp ? (
+                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Development bypass — your OTP is <strong>{devOtp}</strong>
+                </p>
+              ) : null}
+            </div>
+
             <Field
               label="Avg Time per Patient (minutes)"
               id="avg_time_per_patient"
@@ -211,16 +415,18 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || otpVerifying || !otpSent || otp.length !== 6}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {loading ? (
+              {loading || otpVerifying ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Registering...
+                  {loading
+                    ? "Opening Cashfree ₹1 mandate..."
+                    : "Verifying WhatsApp OTP..."}
                 </>
               ) : (
-                "Register & Generate WhatsApp QR Standee"
+                "Verify OTP & Authorize ₹1 UPI Mandate"
               )}
             </button>
           </form>

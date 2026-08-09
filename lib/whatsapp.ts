@@ -1,18 +1,58 @@
 import {
   getWhatsAppPhoneNumberId,
   getWhatsAppToken,
+  hasWhatsAppCredentials,
 } from "@/lib/env";
+import { normalizePhone } from "@/lib/phone";
+
+const PLACEHOLDER_NUMBERS = new Set([
+  "9876543210",
+  "919876543210",
+  "9999999999",
+]);
+
+export function formatWhatsAppDialNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return "";
+
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith("91")) {
+    return digits;
+  }
+
+  return digits;
+}
 
 export function getWhatsAppBusinessNumber(): string {
-  return (
+  const fromEnv = (
     process.env.WHATSAPP_BUSINESS_NUMBER ??
     process.env.NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER ??
     ""
   ).replace(/\D/g, "");
+
+  if (fromEnv && !PLACEHOLDER_NUMBERS.has(fromEnv)) {
+    return fromEnv;
+  }
+
+  return "";
 }
 
-export function buildWhatsAppTokenUrl(clinicId: string): string {
-  const number = getWhatsAppBusinessNumber();
+export function buildWhatsAppTokenUrl(
+  clinicId: string,
+  clinicPhone?: string | null,
+): string {
+  const number =
+    formatWhatsAppDialNumber(clinicPhone ?? "") || getWhatsAppBusinessNumber();
+
+  if (!number || PLACEHOLDER_NUMBERS.has(number.slice(-10))) {
+    throw new Error(
+      "Clinic WhatsApp number is missing. Please update your registered phone number.",
+    );
+  }
+
   const message = encodeURIComponent(`TOKEN ${clinicId}`);
   return `https://wa.me/${number}?text=${message}`;
 }
@@ -29,7 +69,7 @@ export async function sendWhatsAppMessage(
     return false;
   }
 
-  const normalizedTo = to.replace(/\D/g, "");
+  const normalizedTo = formatWhatsAppDialNumber(to);
 
   const response = await fetch(
     `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
@@ -78,3 +118,5 @@ export async function logNotification(
     // Non-blocking
   }
 }
+
+export { hasWhatsAppCredentials };

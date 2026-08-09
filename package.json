@@ -10,14 +10,16 @@
     "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
+    "@cashfreepayments/cashfree-js": "^1.0.7",
+    "@sentry/nextjs": "^10.69.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.2",
+    "cashfree-pg": "^6.0.4",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.30.0",
     "next": "16.3.0",
     "openai": "^7.4.0",
     "qrcode": "^1.5.4",
-    "razorpay": "^2.9.8",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -30,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vercel": "^58.9.0"
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withSentryApiRoute } from "@/lib/sentry-api";
 import { calculateEstimatedWait } from "@/lib/queue";
 import { createClient } from "@/lib/supabase/server";
 
@@ -6,7 +7,10 @@ type RouteContext = {
   params: Promise<{ tokenId: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export const GET = withSentryApiRoute(
+  "GET",
+  "/api/queue/[tokenId]",
+  async function GET(_request: Request, context: RouteContext) {
   const { tokenId } = await context.params;
   const supabase = await createClient();
 
@@ -52,4 +56,5 @@ export async function GET(_request: Request, context: RouteContext) {
     positionInQueue: Math.max(0, positionInQueue),
     estimatedWaitMinutes,
   });
-}
+},
+);

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withSentryApiRoute } from "@/lib/sentry-api";
+import { getClinicOrThrow, getSubscriptionAccessError } from "@/lib/clinic-access";
 import { createClient } from "@/lib/supabase/server";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
@@ -6,19 +8,23 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function POST(_request: Request, context: RouteContext) {
+export const POST = withSentryApiRoute(
+  "POST",
+  "/api/clinics/[id]/next",
+  async function POST(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const supabase = await createClient();
 
-  const { data: clinic, error: clinicError } = await supabase
-    .from("clinics")
-    .select("id, current_token")
-    .eq("id", id)
-    .single();
-
-  if (clinicError || !clinic) {
-    return NextResponse.json({ error: "Clinic not found." }, { status: 404 });
+  const { clinic, error: clinicLookupError } = await getClinicOrThrow(id);
+  if (!clinic) {
+    return NextResponse.json({ error: clinicLookupError }, { status: 404 });
   }
+
+  const accessError = getSubscriptionAccessError(clinic);
+  if (accessError) {
+    return NextResponse.json({ error: accessError }, { status: 403 });
+  }
+
+  const supabase = await createClient();
 
   const { data: currentlyServing } = await supabase
     .from("tokens")
@@ -80,4 +86,5 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({ patient: called });
-}
+},
+);

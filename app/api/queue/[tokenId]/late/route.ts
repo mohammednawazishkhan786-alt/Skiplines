@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
 import { notifyWaitingPatientsOfShift, shiftTokenLate } from "@/lib/queue";
 import { createClient } from "@/lib/supabase/server";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
@@ -7,7 +8,10 @@ type RouteContext = {
   params: Promise<{ tokenId: string }>;
 };
 
-export async function POST(_request: Request, context: RouteContext) {
+export const POST = withSentryApiRoute(
+  "POST",
+  "/api/queue/[tokenId]/late",
+  async function POST(_request: Request, context: RouteContext) {
   const { tokenId } = await context.params;
   const supabase = await createClient();
 
@@ -30,9 +34,11 @@ export async function POST(_request: Request, context: RouteContext) {
 
     return NextResponse.json({ entry });
   } catch (error) {
+    captureApiError(error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Late shift failed." },
       { status: 400 },
     );
   }
-}
+},
+);

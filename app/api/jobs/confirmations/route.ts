@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { withSentryApiRoute } from "@/lib/sentry-api";
 import { isAuthorizedJobRequest } from "@/lib/auth/cron";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
-export async function POST(request: Request) {
+export const POST = withSentryApiRoute(
+  "POST",
+  "/api/jobs/confirmations",
+  async function POST(request: Request) {
   if (!isAuthorizedJobRequest(request)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -52,4 +56,5 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ sent, total: entries?.length ?? 0 });
-}
+},
+);

@@ -11,6 +11,11 @@ export type Clinic = {
   google_review_link: string | null;
   whatsapp_number: string | null;
   razorpay_subscription_id: string | null;
+  cashfree_order_id: string | null;
+  cashfree_subscription_id: string | null;
+  phone_normalized: string | null;
+  subscription_expires_at: string | null;
+  trial_started_at: string | null;
   subscription_status: string;
   trial_ends_at: string | null;
   created_at: string;

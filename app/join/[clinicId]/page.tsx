@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Loader2, Ticket } from "lucide-react";
 
@@ -74,12 +75,23 @@ export default function JoinPage() {
               {loading ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Joining...
+                  Booking...
                 </>
               ) : (
-                "Get My Token"
+                "Book Token"
               )}
             </button>
+            <p className="mt-2 text-center text-xs text-teal-800/60">
+              By clicking Book Token, you agree to Skiplines&apos;{" "}
+              <Link href="/terms" className="underline hover:text-teal-700">
+                Terms &amp; Conditions
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="underline hover:text-teal-700">
+                Privacy Policy
+              </Link>
+              .
+            </p>
           </>
         )}
       </div>
