@@ -1,0 +1,15 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "crons": [
+    {
+      "path": "/api/jobs/confirmations",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/reviews/send",
+      "schedule": "0 10 * * *"
+    }
+  ]
+}
