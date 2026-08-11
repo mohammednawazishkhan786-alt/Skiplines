@@ -15,10 +15,38 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteTitle = "Skiplines — Skip the Wait";
+const siteDescription =
+  "Digital OPD queue management for clinics and doctors in India. Patients join by QR, doctors call the next patient with one tap.";
+
 export const metadata: Metadata = {
   metadataBase: new URL(CANONICAL_PRODUCTION_SITE_URL),
-  title: "Skiplines",
-  description: "Digital queue management for clinics and doctors.",
+  title: {
+    default: siteTitle,
+    template: "%s · Skiplines",
+  },
+  description: siteDescription,
+  applicationName: "Skiplines",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_IN",
+    url: CANONICAL_PRODUCTION_SITE_URL,
+    siteName: "Skiplines",
+    title: siteTitle,
+    description: siteDescription,
+  },
+  twitter: {
+    card: "summary",
+    title: siteTitle,
+    description: siteDescription,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

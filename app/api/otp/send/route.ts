@@ -1,5 +1,6 @@
 import { upsertEmailOtp } from "@/lib/email-otp-store";
 import { apiError, apiSuccess, parseJsonBody } from "@/lib/api-response";
+import { enforceRateLimit, ipKey } from "@/lib/api-rate-limit";
 import { getResendApiKey } from "@/lib/env";
 import {
   deliverOtp,
@@ -8,11 +9,6 @@ import {
 } from "@/lib/otp";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  checkRateLimit,
-  getClientIp,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
 import { isDevOtpBypassEnabled } from "@/lib/resend-otp";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
 
@@ -54,13 +50,13 @@ export const POST = withSentryApiRoute(
         return deliveryCheck;
       }
 
-      const clientIp = getClientIp(request);
-      const ipLimit = checkRateLimit(`otp-send:ip:${clientIp}`, {
-        windowMs: 60_000,
-        max: 5,
-      });
-      if (!ipLimit.allowed) {
-        return rateLimitResponse(ipLimit.retryAfterSeconds);
+      const ipLimited = await enforceRateLimit(
+        request,
+        ipKey(request, "otp-send"),
+        { windowMs: 60_000, max: 5, failClosed: true },
+      );
+      if (ipLimited) {
+        return ipLimited;
       }
 
       const parsedBody = await parseJsonBody(request);
@@ -76,12 +72,13 @@ export const POST = withSentryApiRoute(
         return apiError("Please enter a valid email address.", 400);
       }
 
-      const emailLimit = checkRateLimit(`otp-send:email:${emailNormalized}`, {
-        windowMs: 15 * 60_000,
-        max: 3,
-      });
-      if (!emailLimit.allowed) {
-        return rateLimitResponse(emailLimit.retryAfterSeconds);
+      const emailLimited = await enforceRateLimit(
+        request,
+        `otp-send:email:${emailNormalized}`,
+        { windowMs: 15 * 60_000, max: 3, failClosed: true },
+      );
+      if (emailLimited) {
+        return emailLimited;
       }
 
       const existingClinic = await findExistingClinicByEmail(emailNormalized);

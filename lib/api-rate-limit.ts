@@ -8,8 +8,14 @@ import {
 type LimitOptions = {
   windowMs: number;
   max: number;
+  /** Default true for abuse-sensitive endpoints. */
+  failClosed?: boolean;
 };
 
+/**
+ * Distributed (Postgres) + in-memory rate limit.
+ * Both must allow the request.
+ */
 export async function enforceRateLimit(
   request: Request,
   key: string,

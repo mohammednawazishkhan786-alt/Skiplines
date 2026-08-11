@@ -10,12 +10,18 @@ import {
 import { trialEndsAtFromNow } from "@/lib/subscription";
 import { getSubscriptionAmountInr, getSubscriptionPlanId } from "@/lib/subscription-access";
 import { normalizeEmail } from "@/lib/email";
+import {
+  INVALID_PHONE_MESSAGE,
+  isValidIndianMobile,
+  normalizePhone,
+} from "@/lib/phone";
 import type { Clinic } from "@/lib/types";
 
 type RegistrationBody = {
   doctor_name?: string;
   clinic_name?: string;
   email?: string;
+  phone?: string;
   avg_time_per_patient?: number | string;
   consultation_fee?: number | string;
   clinic_hours?: string;
@@ -68,6 +74,7 @@ function parseRegistrationBody(body: RegistrationBody) {
   const doctorName = String(body.doctor_name ?? "").trim();
   const clinicName = String(body.clinic_name ?? "").trim();
   const email = String(body.email ?? "").trim();
+  const phoneRaw = String(body.phone ?? "").trim();
   const avgTimeRaw = Number(body.avg_time_per_patient);
   const consultationFeeRaw = Number(body.consultation_fee);
   const avgTime = Number.isFinite(avgTimeRaw) && avgTimeRaw > 0 ? avgTimeRaw : 10;
@@ -85,6 +92,7 @@ function parseRegistrationBody(body: RegistrationBody) {
     doctorName,
     clinicName,
     email,
+    phoneRaw,
     avgTime,
     consultationFee,
     clinicHours,
@@ -113,6 +121,7 @@ export const POST = withSentryApiRoute(
         doctorName,
         clinicName,
         email,
+        phoneRaw,
         avgTime,
         consultationFee,
         clinicHours,
@@ -127,6 +136,14 @@ export const POST = withSentryApiRoute(
         );
       }
 
+      if (!isValidIndianMobile(phoneRaw)) {
+        return NextResponse.json(
+          { error: INVALID_PHONE_MESSAGE },
+          { status: 400 },
+        );
+      }
+
+      const phone = normalizePhone(phoneRaw);
       const emailNormalized = normalizeEmail(email);
       const existingClinic = await findExistingClinicByEmail(emailNormalized);
       if (existingClinic) {
@@ -159,13 +176,13 @@ export const POST = withSentryApiRoute(
         doctor_name: doctorName,
         clinic_name: clinicName,
         email,
-        phone: email,
-        phone_normalized: null,
+        phone,
+        phone_normalized: phone,
         avg_time_per_patient: Math.round(avgTime),
         consultation_fee: consultationFee,
         clinic_hours: clinicHours,
         google_review_link: googleReviewLink,
-        whatsapp_number: null,
+        whatsapp_number: phone,
         subscription_status: "trialing",
         trial_started_at: trialStartedAt,
         trial_ends_at: trialEndsAt,

@@ -28,6 +28,35 @@ export async function createQueueEntry(
     isEmergency?: boolean;
   } = {},
 ): Promise<Token> {
+  // Prefer DB-atomic RPC (advisory lock) when migration 017 is applied.
+  const { data: rpcEntry, error: rpcError } = await supabase.rpc(
+    "join_queue_atomic",
+    {
+      p_clinic_id: clinic.id,
+      p_patient_name: options.patientName ?? null,
+      p_patient_phone: options.patientPhone ?? null,
+      p_is_emergency: options.isEmergency ?? false,
+      p_avg_time_per_patient: clinic.avg_time_per_patient,
+    },
+  );
+
+  if (!rpcError && rpcEntry) {
+    return rpcEntry as Token;
+  }
+
+  // Fallback path for environments where RPC is not yet applied.
+  return createQueueEntryLegacy(supabase, clinic, options);
+}
+
+async function createQueueEntryLegacy(
+  supabase: SupabaseClient,
+  clinic: Clinic,
+  options: {
+    patientPhone?: string;
+    patientName?: string;
+    isEmergency?: boolean;
+  },
+): Promise<Token> {
   const { data: lastEntry } = await supabase
     .from("tokens")
     .select("token_number")

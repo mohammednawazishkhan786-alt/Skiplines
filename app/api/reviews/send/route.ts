@@ -38,10 +38,11 @@ export const POST = withSentryApiRoute(
       .eq("id", entry.clinic_id)
       .single();
 
-    const reviewUrl =
-      clinic?.google_review_link ??
-      process.env.DEFAULT_GOOGLE_REVIEW_URL ??
-      "https://g.page/r/review";
+    const reviewUrl = clinic?.google_review_link?.trim();
+    if (!reviewUrl) {
+      // No clinic-configured review URL — skip silently (do not invent placeholders).
+      continue;
+    }
 
     const message = `Thank you for visiting ${clinic?.clinic_name ?? "our clinic"}! 🌟 We'd love your feedback. Please leave us a Google review: ${reviewUrl}`;
 

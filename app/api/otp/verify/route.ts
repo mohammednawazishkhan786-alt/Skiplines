@@ -6,17 +6,13 @@ import {
   invalidateEmailOtp,
 } from "@/lib/email-otp-store";
 import { apiError, parseJsonBody } from "@/lib/api-response";
+import { enforceRateLimit, ipKey } from "@/lib/api-rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createVerificationSessionToken,
   VERIFICATION_SESSION_MS,
 } from "@/lib/otp";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
-import {
-  checkRateLimit,
-  getClientIp,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
 
 async function findClinicIdByEmail(emailNormalized: string) {
@@ -41,13 +37,13 @@ export const POST = withSentryApiRoute(
   "/api/otp/verify",
   async function POST(request: Request) {
     try {
-      const clientIp = getClientIp(request);
-      const ipLimit = checkRateLimit(`otp-verify:ip:${clientIp}`, {
-        windowMs: 60_000,
-        max: 10,
-      });
-      if (!ipLimit.allowed) {
-        return rateLimitResponse(ipLimit.retryAfterSeconds);
+      const ipLimited = await enforceRateLimit(
+        request,
+        ipKey(request, "otp-verify"),
+        { windowMs: 60_000, max: 10, failClosed: true },
+      );
+      if (ipLimited) {
+        return ipLimited;
       }
 
       const parsedBody = await parseJsonBody(request);
@@ -64,12 +60,13 @@ export const POST = withSentryApiRoute(
         return apiError("Enter your email address and 6-digit OTP.", 400);
       }
 
-      const emailLimit = checkRateLimit(`otp-verify:email:${emailNormalized}`, {
-        windowMs: 15 * 60_000,
-        max: 5,
-      });
-      if (!emailLimit.allowed) {
-        return rateLimitResponse(emailLimit.retryAfterSeconds);
+      const emailLimited = await enforceRateLimit(
+        request,
+        `otp-verify:email:${emailNormalized}`,
+        { windowMs: 15 * 60_000, max: 5, failClosed: true },
+      );
+      if (emailLimited) {
+        return emailLimited;
       }
 
       let record;
@@ -112,12 +109,13 @@ export const POST = withSentryApiRoute(
       }
 
       if (!emailOtpMatches(record, emailNormalized, otp)) {
-        const failLimit = checkRateLimit(
+        const failLimited = await enforceRateLimit(
+          request,
           `otp-verify-fail:email:${emailNormalized}`,
-          { windowMs: 15 * 60_000, max: 5 },
+          { windowMs: 15 * 60_000, max: 5, failClosed: true },
         );
-        if (!failLimit.allowed) {
-          return rateLimitResponse(failLimit.retryAfterSeconds);
+        if (failLimited) {
+          return failLimited;
         }
 
         return apiError("Invalid OTP. Please try again.", 400);

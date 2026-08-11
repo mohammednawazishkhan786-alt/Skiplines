@@ -7,11 +7,13 @@ import { Loader2 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { getApiErrorMessage, parseApiResponse } from "@/lib/api-client";
 import { DUPLICATE_EMAIL_MESSAGE } from "@/lib/otp";
+import { INVALID_PHONE_MESSAGE, isValidIndianMobile } from "@/lib/phone";
 
 type FormState = {
   doctor_name: string;
   clinic_name: string;
   email: string;
+  phone: string;
   avg_time_per_patient: string;
   consultation_fee: string;
   clinic_hours: string;
@@ -22,6 +24,7 @@ const initialForm: FormState = {
   doctor_name: "",
   clinic_name: "",
   email: "",
+  phone: "",
   avg_time_per_patient: "10",
   consultation_fee: "500",
   clinic_hours: "Mon-Sat 9:00 AM - 8:00 PM",
@@ -39,6 +42,7 @@ function validateForm(form: FormState) {
   if (!form.doctor_name.trim()) return "Doctor name is required.";
   if (!form.clinic_name.trim()) return "Clinic name is required.";
   if (!form.email.trim()) return "Email is required.";
+  if (!isValidIndianMobile(form.phone)) return INVALID_PHONE_MESSAGE;
   if (!form.clinic_hours.trim()) return "Clinic hours are required.";
   return null;
 }
@@ -123,6 +127,7 @@ export default function RegisterPage() {
           doctor_name: form.doctor_name.trim(),
           clinic_name: form.clinic_name.trim(),
           email: form.email.trim(),
+          phone: form.phone.trim(),
           avg_time_per_patient:
             Number(form.avg_time_per_patient) > 0
               ? Number(form.avg_time_per_patient)
@@ -260,6 +265,18 @@ export default function RegisterPage() {
             value={form.clinic_name}
             onChange={(value) => updateField("clinic_name", value)}
             placeholder="City Care Clinic"
+            required
+          />
+
+          <Field
+            label="Clinic WhatsApp / Mobile Number"
+            id="phone"
+            type="tel"
+            value={form.phone}
+            onChange={(value) =>
+              updateField("phone", value.replace(/[^\d+\s-]/g, "").slice(0, 15))
+            }
+            placeholder="10-digit Indian mobile"
             required
           />
 

@@ -14,6 +14,7 @@ import {
 import { SiteHeader } from "@/components/site-header";
 import { verifyClinicOwnership } from "@/lib/clinic-ownership";
 import { PatientQrCode } from "@/components/patient-qr-code";
+import { PatientStandeeDownload } from "@/components/patient-standee-download";
 import { openCashfreeCheckout } from "@/lib/cashfree-checkout";
 import {
   cleanDashboardPath,
@@ -540,13 +541,20 @@ function DashboardContent() {
         <>
       {dashboardAccess &&
       verifyClinicOwnership(clinicId, data.clinic.id) ? (
-        <PatientQrCode
-          key={clinic.id}
-          clinicId={clinic.id}
-          authenticatedClinicId={clinicId}
-          clinicName={clinic.clinic_name}
-          doctorName={clinic.doctor_name}
-        />
+        <>
+          <PatientQrCode
+            key={clinic.id}
+            clinicId={clinic.id}
+            authenticatedClinicId={clinicId}
+            clinicName={clinic.clinic_name}
+            doctorName={clinic.doctor_name}
+          />
+          <PatientStandeeDownload
+            clinicId={clinic.id}
+            authenticatedClinicId={clinicId}
+            clinicName={clinic.clinic_name}
+          />
+        </>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">

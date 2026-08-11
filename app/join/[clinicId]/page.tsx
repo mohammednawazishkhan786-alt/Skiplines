@@ -4,11 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Loader2, Ticket } from "lucide-react";
+import { INVALID_PHONE_MESSAGE, isValidIndianMobile } from "@/lib/phone";
 import { buildLiveTrackerUrl } from "@/lib/public-urls";
 
 export default function JoinPage() {
   const params = useParams<{ clinicId: string }>();
   const clinicId = params.clinicId;
+  const [patientName, setPatientName] = useState("");
+  const [patientPhone, setPatientPhone] = useState("");
   const [token, setToken] = useState<number | null>(null);
   const [entryId, setEntryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,12 +20,28 @@ export default function JoinPage() {
   async function handleJoin() {
     if (!clinicId) return;
 
+    const name = patientName.trim();
+    if (!name || name.length < 2) {
+      setError("Enter your full name.");
+      return;
+    }
+
+    if (!isValidIndianMobile(patientPhone)) {
+      setError(INVALID_PHONE_MESSAGE);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const response = await fetch(`/api/clinics/${clinicId}/join`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_name: name,
+          patient_phone: patientPhone.trim(),
+        }),
       });
       const payload = await response.json();
 
@@ -50,7 +69,7 @@ export default function JoinPage() {
         <Ticket className="mx-auto h-10 w-10 text-teal-700" />
         <h1 className="mt-4 text-2xl font-bold text-teal-950">Join the Queue</h1>
         <p className="mt-2 text-teal-800/80">
-          Tap below to get your token number. No sign-up needed.
+          Enter your name and WhatsApp number to get your token.
         </p>
 
         {token ? (
@@ -75,8 +94,50 @@ export default function JoinPage() {
           </div>
         ) : (
           <>
+            <div className="mt-6 space-y-4 text-left">
+              <label className="block" htmlFor="join-name">
+                <span className="mb-1.5 block text-sm font-medium text-teal-900">
+                  Your Name
+                </span>
+                <input
+                  id="join-name"
+                  type="text"
+                  autoComplete="name"
+                  value={patientName}
+                  onChange={(event) => setPatientName(event.target.value)}
+                  placeholder="Patient name"
+                  maxLength={80}
+                  className="w-full rounded-xl border border-teal-200 px-4 py-3 text-teal-950 outline-none focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500"
+                />
+              </label>
+              <label className="block" htmlFor="join-phone">
+                <span className="mb-1.5 block text-sm font-medium text-teal-900">
+                  WhatsApp / Mobile Number
+                </span>
+                <input
+                  id="join-phone"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  value={patientPhone}
+                  onChange={(event) =>
+                    setPatientPhone(event.target.value.replace(/[^\d+\s-]/g, "").slice(0, 15))
+                  }
+                  placeholder="10-digit Indian mobile"
+                  className="w-full rounded-xl border border-teal-200 px-4 py-3 text-teal-950 outline-none focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500"
+                  aria-describedby="join-phone-hint"
+                />
+                <span id="join-phone-hint" className="mt-1 block text-xs text-teal-700/70">
+                  Used only to notify you when it is your turn.
+                </span>
+              </label>
+            </div>
+
             {error ? (
-              <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p
+                role="alert"
+                className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
                 {error}
               </p>
             ) : null}
@@ -84,7 +145,7 @@ export default function JoinPage() {
               type="button"
               onClick={() => void handleJoin()}
               disabled={loading || !clinicId}
-              className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 px-6 py-4 text-lg font-semibold text-white hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-teal-700 px-6 py-4 text-lg font-semibold text-white hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading ? (
                 <>

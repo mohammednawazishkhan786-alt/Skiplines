@@ -1,16 +1,36 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, QrCode, Stethoscope } from "lucide-react";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader } from "@/components/site-header";
+import { CANONICAL_PRODUCTION_SITE_URL } from "@/lib/env";
 
 export const metadata: Metadata = {
   title: "Skiplines — Skip the Wait",
   description: "Digital queue management for clinics and doctors.",
 };
 
+const softwareJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Skiplines",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  url: CANONICAL_PRODUCTION_SITE_URL,
+  description:
+    "Digital OPD queue management for clinics and doctors in India.",
+  offers: {
+    "@type": "Offer",
+    price: "999",
+    priceCurrency: "INR",
+    description: "Monthly clinic subscription after 7-day free trial",
+  },
+};
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50 to-white">
+      <JsonLd data={softwareJsonLd} />
       <SiteHeader />
       <main className="mx-auto flex max-w-5xl flex-col items-center px-6 py-20 text-center">
         <div className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-800">
