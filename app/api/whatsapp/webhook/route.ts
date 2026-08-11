@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
-import { getWhatsAppVerifyToken } from "@/lib/env";
+import { getPublicAppUrl, getWhatsAppVerifyToken } from "@/lib/env";
 import { getAIReceptionistReply } from "@/lib/openai";
 import { createQueueEntry } from "@/lib/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Clinic } from "@/lib/types";
+import { verifyWhatsAppWebhookSignature } from "@/lib/whatsapp-webhook";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
 export const GET = withSentryApiRoute(
@@ -29,14 +30,37 @@ export const POST = withSentryApiRoute(
   "/api/whatsapp/webhook",
   async function POST(request: Request) {
     try {
-      const body = await request.json();
+      const rawBody = await request.text();
+      const signature = request.headers.get("x-hub-signature-256");
+
+      if (!verifyWhatsAppWebhookSignature(signature, rawBody)) {
+        return NextResponse.json(
+          { error: "Invalid webhook signature." },
+          { status: 401 },
+        );
+      }
+
+      const body = JSON.parse(rawBody) as {
+        object?: string;
+        entry?: Array<{
+          changes?: Array<{
+            value?: {
+              messages?: Array<{
+                type?: string;
+                from?: string;
+                text?: { body?: string };
+              }>;
+            };
+          }>;
+        }>;
+      };
 
       if (body.object !== "whatsapp_business_account") {
         return NextResponse.json({ status: "ignored" });
       }
 
       const supabase = createAdminClient();
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      const appUrl = getPublicAppUrl();
 
       for (const entry of body.entry ?? []) {
         for (const change of entry.changes ?? []) {

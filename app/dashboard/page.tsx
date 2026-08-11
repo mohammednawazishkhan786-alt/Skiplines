@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   BellRing,
@@ -10,11 +10,25 @@ import {
   Loader2,
   RefreshCw,
   Users,
-  XCircle,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
-import { openCashfreeSubscriptionCheckout } from "@/lib/cashfree-checkout";
-import { hasDashboardAccess } from "@/lib/subscription";
+import { verifyClinicOwnership } from "@/lib/clinic-ownership";
+import { PatientQrCode } from "@/components/patient-qr-code";
+import { openCashfreeCheckout } from "@/lib/cashfree-checkout";
+import {
+  cleanDashboardPath,
+  cleanDashboardUrl,
+  hasPaymentReturnParams,
+  sanitizeCashfreeErrorMessage,
+  STRIP_PAYMENT_QUERY_KEYS,
+} from "@/lib/cashfree-navigation";
+import {
+  getTrialDaysRemaining,
+  hasDashboardAccess,
+  isPaidSubscriptionActive,
+  isTrialActive,
+  shouldSkipCashfreePaymentFlow,
+} from "@/lib/subscription";
 import type { Clinic, QueueEntry } from "@/lib/types";
 
 type DashboardData = {
@@ -24,24 +38,79 @@ type DashboardData = {
 };
 
 function DashboardContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [calling, setCalling] = useState(false);
   const [emergencyId, setEmergencyId] = useState<string | null>(null);
-  const [subscribing, setSubscribing] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [resolvingSession, setResolvingSession] = useState(true);
+  const verifiedPaymentRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const fromQuery = searchParams.get("clinic");
-    const fromStorage =
-      typeof window !== "undefined"
-        ? localStorage.getItem("skiplines_clinic_id")
-        : null;
-    setClinicId(fromQuery ?? fromStorage);
+    const params = new URLSearchParams(searchParams.toString());
+    let dirty = false;
+
+    for (const key of STRIP_PAYMENT_QUERY_KEYS) {
+      if (params.has(key)) {
+        params.delete(key);
+        dirty = true;
+      }
+    }
+
+    if (!dirty) {
+      return;
+    }
+
+    const clinic = params.get("clinic") ?? clinicId;
+    router.replace(cleanDashboardPath(clinic), { scroll: false });
+  }, [searchParams, clinicId, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveClinicId() {
+      const fromQuery = searchParams.get("clinic");
+      const fromStorage =
+        typeof window !== "undefined"
+          ? localStorage.getItem("skiplines_clinic_id")
+          : null;
+
+      try {
+        const sessionResponse = await fetch("/api/auth/me", {
+          credentials: "same-origin",
+        });
+
+        if (sessionResponse.ok) {
+          const session = await sessionResponse.json();
+          if (!cancelled && session.clinic_id) {
+            localStorage.setItem("skiplines_clinic_id", session.clinic_id);
+            setClinicId(fromQuery ?? session.clinic_id);
+            setResolvingSession(false);
+            return;
+          }
+        }
+      } catch {
+        // Fall back to stored clinic id below.
+      }
+
+      if (!cancelled) {
+        setClinicId(fromQuery ?? fromStorage);
+        setResolvingSession(false);
+      }
+    }
+
+    void resolveClinicId();
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams]);
 
   const loadDashboard = useCallback(async () => {
@@ -53,8 +122,16 @@ function DashboardContent() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/clinics/${clinicId}`);
+      const response = await fetch(`/api/clinics/${clinicId}`, {
+        credentials: "same-origin",
+      });
       const payload = await response.json();
+
+      if (response.status === 401) {
+        throw new Error(
+          "Your session expired. Sign in with email OTP on the login page.",
+        );
+      }
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Failed to load dashboard.");
@@ -76,96 +153,114 @@ function DashboardContent() {
     async (orderId: string) => {
       if (!clinicId) return;
 
+      setVerifyingPayment(true);
       setMessage(null);
       setError(null);
 
       try {
-        const response = await fetch("/api/cashfree/verify", {
+        const response = await fetch("/api/cashfree/verify-payment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
           body: JSON.stringify({ clinic_id: clinicId, order_id: orderId }),
         });
-        const payload = await response.json();
+        const raw = await response.text();
+        let payload: { error?: string; message?: string; skipped?: boolean } =
+          {};
 
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Payment verification failed.");
+        if (raw) {
+          try {
+            payload = JSON.parse(raw) as {
+              error?: string;
+              message?: string;
+              skipped?: boolean;
+            };
+          } catch {
+            throw new Error("Payment verification failed. Please try again.");
+          }
         }
 
-        setMessage("Subscription activated — thank you for your payment.");
-        await loadDashboard();
-      } catch (verifyError) {
-        setError(
-          verifyError instanceof Error
-            ? verifyError.message
-            : "Payment verification failed.",
-        );
-      }
-    },
-    [clinicId, loadDashboard],
-  );
-
-  const verifySubscription = useCallback(
-    async (subscriptionId: string) => {
-      if (!clinicId) return;
-
-      setMessage(null);
-      setError(null);
-
-      try {
-        const response = await fetch("/api/cashfree/verify-subscription", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clinic_id: clinicId,
-            subscription_id: subscriptionId,
-          }),
-        });
-        const payload = await response.json();
-
         if (!response.ok) {
-          throw new Error(payload.error ?? "Subscription verification failed.");
+          throw new Error(
+            sanitizeCashfreeErrorMessage(
+              payload.error ?? "Payment verification failed.",
+            ),
+          );
         }
 
-        setMessage(
-          payload.message ?? "Your 7-day free trial is now active!",
-        );
-        await loadDashboard();
+        if (!payload.skipped) {
+          setMessage(
+            payload.message ??
+              "Payment successful — Skiplines unlocked for 1 month.",
+          );
+          await loadDashboard();
+        }
+
+        router.replace(cleanDashboardPath(clinicId), { scroll: false });
       } catch (verifyError) {
         setError(
-          verifyError instanceof Error
-            ? verifyError.message
-            : "Subscription verification failed.",
+          sanitizeCashfreeErrorMessage(
+            verifyError instanceof Error
+              ? verifyError.message
+              : "Payment verification failed.",
+          ),
         );
+        router.replace(cleanDashboardPath(clinicId), { scroll: false });
+      } finally {
+        setVerifyingPayment(false);
       }
     },
-    [clinicId, loadDashboard],
+    [clinicId, loadDashboard, router],
   );
 
   useEffect(() => {
-    const subscription = searchParams.get("subscription");
-    const subscriptionId = searchParams.get("subscription_id");
-
-    if (subscription === "success" && subscriptionId && clinicId) {
-      void verifySubscription(subscriptionId);
+    if (!data?.clinic || !clinicId) {
+      return;
     }
-  }, [searchParams, clinicId, verifySubscription]);
+
+    if (shouldSkipCashfreePaymentFlow(data.clinic)) {
+      if (hasPaymentReturnParams(searchParams)) {
+        router.replace(cleanDashboardPath(clinicId), { scroll: false });
+      }
+      return;
+    }
+
+    if (!hasPaymentReturnParams(searchParams)) {
+      return;
+    }
+
+    const orderId = searchParams.get("order_id")?.trim();
+    if (!orderId) {
+      router.replace(cleanDashboardPath(clinicId), { scroll: false });
+      return;
+    }
+
+    if (verifiedPaymentRef.current === orderId) {
+      return;
+    }
+
+    verifiedPaymentRef.current = orderId;
+    void verifyPayment(orderId);
+  }, [data, searchParams, clinicId, verifyPayment, router]);
 
   useEffect(() => {
-    const payment = searchParams.get("payment");
-    const orderId = searchParams.get("order_id");
+    let active = true;
 
-    if (payment === "success" && orderId && clinicId) {
-      void verifyPayment(orderId);
-    }
-  }, [searchParams, clinicId, verifyPayment]);
-
-  useEffect(() => {
-    void loadDashboard();
-    const interval = setInterval(() => {
+    const runLoad = () => {
+      if (!active) {
+        return;
+      }
       void loadDashboard();
-    }, 5000);
+    };
 
-    return () => clearInterval(interval);
+    const initialTimeoutId = window.setTimeout(runLoad, 0);
+    const interval = window.setInterval(runLoad, 5000);
+
+    return () => {
+      active = false;
+      window.clearTimeout(initialTimeoutId);
+      window.clearInterval(interval);
+    };
   }, [loadDashboard]);
 
   async function handleCallNext() {
@@ -178,6 +273,7 @@ function DashboardContent() {
     try {
       const response = await fetch(`/api/clinics/${clinicId}/next`, {
         method: "POST",
+        credentials: "same-origin",
       });
       const payload = await response.json();
 
@@ -209,6 +305,7 @@ function DashboardContent() {
       const response = await fetch(`/api/clinics/${clinicId}/emergency`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ entry_id: entryId }),
       });
       const payload = await response.json();
@@ -232,80 +329,84 @@ function DashboardContent() {
     }
   }
 
-  async function handleSubscribe(skipTrial = false) {
+  async function handleUnlockPayment() {
     if (!clinicId) return;
 
-    setSubscribing(true);
+    setPaying(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/cashfree/create-subscription", {
+      const response = await fetch("/api/cashfree/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinic_id: clinicId, skip_trial: skipTrial }),
+        credentials: "same-origin",
+        body: JSON.stringify({ clinic_id: clinicId }),
       });
-      const payload = await response.json();
+      const raw = await response.text();
+      let payload: {
+        success?: boolean;
+        error?: string;
+        payment_session_id?: string;
+        cashfree_mode?: "sandbox" | "production";
+        return_url?: string;
+        order_id?: string;
+      } = {};
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Checkout failed.");
+      if (raw) {
+        try {
+          payload = JSON.parse(raw) as typeof payload;
+        } catch {
+          throw new Error("Could not start payment. Please try again.");
+        }
       }
 
-      if (payload.subscription_session_id) {
-        await openCashfreeSubscriptionCheckout(
-          payload.subscription_session_id,
+      if (!response.ok || payload.success === false) {
+        throw new Error(
+          sanitizeCashfreeErrorMessage(
+            payload.error ?? "Could not start payment.",
+          ),
         );
-        return;
       }
 
-      setMessage(
-        payload.message ??
-          `Subscription status: ${payload.status ?? "pending"}`,
+      if (!payload.payment_session_id?.trim()) {
+        throw new Error("Cashfree did not return a payment session.");
+      }
+
+      if (payload.cashfree_mode !== "production") {
+        throw new Error("Live payments require Cashfree production mode.");
+      }
+
+      await openCashfreeCheckout(
+        payload.payment_session_id.trim(),
+        payload.return_url ??
+          `${cleanDashboardUrl(clinicId)}&order_id=${payload.order_id}`,
+        payload.cashfree_mode,
       );
-      await loadDashboard();
-    } catch (subscribeError) {
+    } catch (payError) {
       setError(
-        subscribeError instanceof Error
-          ? subscribeError.message
-          : "Checkout failed.",
+        sanitizeCashfreeErrorMessage(
+          payError instanceof Error ? payError.message : "Payment failed.",
+        ),
       );
     } finally {
-      setSubscribing(false);
+      setPaying(false);
     }
   }
 
-  async function handleCancelSubscription() {
-    if (!clinicId) return;
-
-    const confirmed = window.confirm(
-      "Cancel your subscription? Your UPI mandate will be revoked and you won't be charged ₹999 after the trial.",
-    );
-    if (!confirmed) return;
-
-    setCancelling(true);
+  async function handleLogout() {
+    setLoggingOut(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/cashfree/cancel-subscription", {
+      await fetch("/api/auth/logout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clinic_id: clinicId }),
+        credentials: "same-origin",
       });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Cancellation failed.");
-      }
-
-      setMessage(payload.message ?? "Subscription cancelled.");
-      await loadDashboard();
-    } catch (cancelError) {
-      setError(
-        cancelError instanceof Error
-          ? cancelError.message
-          : "Cancellation failed.",
-      );
-    } finally {
-      setCancelling(false);
+      localStorage.removeItem("skiplines_clinic_id");
+      router.push("/login");
+    } catch {
+      setError("Could not sign out. Please try again.");
+      setLoggingOut(false);
     }
   }
 
@@ -325,7 +426,7 @@ function DashboardContent() {
     );
   }
 
-  if (loading) {
+  if (resolvingSession || (loading && !data)) {
     return (
       <div className="flex items-center justify-center py-24 text-teal-700">
         <Loader2 className="h-6 w-6 animate-spin" />
@@ -337,6 +438,14 @@ function DashboardContent() {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center text-red-700">
         {error}
+        <div className="mt-4">
+          <Link
+            href="/login"
+            className="inline-block rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600"
+          >
+            Sign in with Email OTP
+          </Link>
+        </div>
       </div>
     );
   }
@@ -346,15 +455,38 @@ function DashboardContent() {
   const { clinic, waiting, currentlyServing } = data;
   const estimatedWait = waiting.length * clinic.avg_time_per_patient;
   const dashboardAccess = hasDashboardAccess(clinic);
-  const statusLabel = clinic.subscription_status.toUpperCase();
-  const canCancel =
-    clinic.cashfree_subscription_id &&
-    (statusLabel === "ACTIVE_TRIAL" || statusLabel === "ACTIVE");
-  const needsMandate = statusLabel === "PENDING_MANDATE";
-  const isExpired = statusLabel === "EXPIRED";
+  const onTrial = isTrialActive(clinic) && !isPaidSubscriptionActive(clinic);
+  const trialDaysLeft = getTrialDaysRemaining(clinic);
+  const paidActive = isPaidSubscriptionActive(clinic);
+  const bannerError = error ? sanitizeCashfreeErrorMessage(error) : null;
+  const bannerMessage = message;
 
   return (
     <div className="space-y-6">
+      {verifyingPayment ? (
+        <div className="rounded-xl border border-teal-200 bg-teal-50 px-5 py-3 text-center text-sm font-medium text-teal-800">
+          Confirming your payment...
+        </div>
+      ) : null}
+
+      {onTrial ? (
+        <div className="rounded-xl border border-teal-200 bg-teal-700 px-5 py-3 text-center text-sm font-medium text-white">
+          7-Day Free Trial Active — {trialDaysLeft} day
+          {trialDaysLeft === 1 ? "" : "s"} left
+        </div>
+      ) : null}
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="rounded-xl border border-teal-200 px-4 py-2 text-sm font-medium text-teal-800 hover:bg-teal-50 disabled:opacity-60"
+        >
+          {loggingOut ? "Signing out..." : "Sign out"}
+        </button>
+      </div>
+
       <div className="rounded-2xl border border-teal-200 bg-white p-8 shadow-sm">
         <p className="text-sm font-medium uppercase tracking-wide text-teal-600">
           {clinic.clinic_name}
@@ -367,84 +499,56 @@ function DashboardContent() {
           {clinic.consultation_fee}
         </p>
         <p className="mt-1 text-sm text-teal-700">
-          Subscription: {clinic.subscription_status}
-          {clinic.trial_ends_at
-            ? ` · Trial ends ${new Date(clinic.trial_ends_at).toLocaleDateString()}`
-            : ""}
-          {clinic.subscription_expires_at
-            ? ` · Renews until ${new Date(clinic.subscription_expires_at).toLocaleDateString()}`
-            : ""}
+          {paidActive
+            ? `Active until ${new Date(clinic.subscription_expires_at!).toLocaleDateString()}`
+            : onTrial
+              ? `Free trial · ${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} remaining`
+              : `Status: ${clinic.subscription_status}`}
         </p>
-      </div>
-
-      <div className="rounded-2xl border border-teal-200 bg-white p-8 shadow-sm">
-        <h2 className="text-lg font-semibold text-teal-950">
-          Billing &amp; Subscription
-        </h2>
-        <p className="mt-2 text-sm text-teal-800/80">
-          ₹999/month after 7-day free trial · ₹1 UPI mandate authorization
-          required · Cancel anytime before Day 7 to avoid charges.
-        </p>
-
-        {needsMandate ? (
-          <button
-            type="button"
-            onClick={() => void handleSubscribe(false)}
-            disabled={subscribing}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600 disabled:opacity-60"
-          >
-            {subscribing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CreditCard className="h-4 w-4" />
-            )}
-            Authorize ₹1 UPI Mandate — Start Free Trial
-          </button>
-        ) : null}
-
-        {isExpired ? (
-          <button
-            type="button"
-            onClick={() => void handleSubscribe(true)}
-            disabled={subscribing}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600 disabled:opacity-60"
-          >
-            {subscribing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CreditCard className="h-4 w-4" />
-            )}
-            Subscribe — ₹999/month (no trial)
-          </button>
-        ) : null}
-
-        {canCancel ? (
-          <button
-            type="button"
-            onClick={() => void handleCancelSubscription()}
-            disabled={cancelling}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-5 py-3 font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
-          >
-            {cancelling ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <XCircle className="h-4 w-4" />
-            )}
-            Cancel Subscription
-          </button>
-        ) : null}
       </div>
 
       {!dashboardAccess ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-900">
-          {needsMandate
-            ? "Complete your ₹1 UPI mandate authorization to unlock the queue dashboard."
-            : "Your subscription has expired. Renew to manage your patient queue."}
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-8 text-center shadow-sm">
+          <h2 className="text-xl font-semibold text-amber-950">
+            Your free trial has ended
+          </h2>
+          <p className="mt-2 text-amber-900/80">
+            Pay ₹999 to unlock Skiplines queue management for 1 month.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleUnlockPayment()}
+            disabled={paying}
+            className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-6 py-3 font-semibold text-white hover:bg-teal-600 disabled:opacity-60"
+          >
+            {paying ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Opening payment...
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-4 w-4" />
+                Pay ₹999 to Unlock Skiplines for 1 Month
+              </>
+            )}
+          </button>
         </div>
       ) : null}
 
       {dashboardAccess ? (
         <>
+      {dashboardAccess &&
+      verifyClinicOwnership(clinicId, data.clinic.id) ? (
+        <PatientQrCode
+          key={clinic.id}
+          clinicId={clinic.id}
+          authenticatedClinicId={clinicId}
+          clinicName={clinic.clinic_name}
+          doctorName={clinic.doctor_name}
+        />
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Now Serving"
@@ -485,15 +589,15 @@ function DashboardContent() {
           )}
         </button>
 
-        {message ? (
+        {bannerMessage ? (
           <p className="mt-4 rounded-lg bg-teal-50 px-4 py-3 text-center font-medium text-teal-800">
-            {message}
+            {bannerMessage}
           </p>
         ) : null}
 
-        {error ? (
+        {bannerError ? (
           <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-center text-sm text-red-700">
-            {error}
+            {bannerError}
           </p>
         ) : null}
       </div>

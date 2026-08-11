@@ -53,8 +53,22 @@ export default function LiveTrackerPage() {
   }, [tokenId]);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    if (!tokenId) {
+      return;
+    }
+
+    let active = true;
+    const timeoutId = window.setTimeout(() => {
+      if (active) {
+        void loadData();
+      }
+    }, 0);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [tokenId, loadData]);
 
   useEffect(() => {
     if (!data?.entry.clinic_id) return;
@@ -130,12 +144,8 @@ export default function LiveTrackerPage() {
 
     try {
       const response = await fetch(
-        `/api/clinics/${data.clinic.id}/emergency`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ entry_id: tokenId }),
-        },
+        `/api/queue/${tokenId}/emergency`,
+        { method: "POST" },
       );
       const payload = await response.json();
 

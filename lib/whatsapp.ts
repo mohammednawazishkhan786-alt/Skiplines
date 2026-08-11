@@ -3,7 +3,6 @@ import {
   getWhatsAppToken,
   hasWhatsAppCredentials,
 } from "@/lib/env";
-import { normalizePhone } from "@/lib/phone";
 
 const PLACEHOLDER_NUMBERS = new Set([
   "9876543210",

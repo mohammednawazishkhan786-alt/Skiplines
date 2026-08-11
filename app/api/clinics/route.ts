@@ -1,19 +1,33 @@
 import { NextResponse } from "next/server";
+import { setDoctorTokenCookie } from "@/lib/auth/doctor";
+import { insertClinicWithUniqueId } from "@/lib/clinic-registration";
 import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  DUPLICATE_PHONE_MESSAGE,
+  DUPLICATE_EMAIL_MESSAGE,
   VERIFICATION_SESSION_MS,
 } from "@/lib/otp";
-import { normalizePhone } from "@/lib/phone";
-import type { ClinicRegistrationInput } from "@/lib/types";
+import { trialEndsAtFromNow } from "@/lib/subscription";
+import { normalizeEmail } from "@/lib/email";
+import type { Clinic } from "@/lib/types";
 
-async function isPhoneVerified(phoneNormalized: string, sessionToken?: string) {
+type RegistrationBody = {
+  doctor_name?: string;
+  clinic_name?: string;
+  email?: string;
+  avg_time_per_patient?: number | string;
+  consultation_fee?: number | string;
+  clinic_hours?: string;
+  google_review_link?: string;
+  session_token?: string;
+};
+
+async function isEmailVerified(emailNormalized: string, sessionToken?: string) {
   const supabase = createAdminClient();
   let query = supabase
-    .from("phone_otp_requests")
+    .from("email_otp_requests")
     .select("verified_at, session_token")
-    .eq("phone_normalized", phoneNormalized)
+    .eq("email_normalized", emailNormalized)
     .not("verified_at", "is", null)
     .order("verified_at", { ascending: false })
     .limit(1);
@@ -36,127 +50,158 @@ async function isPhoneVerified(phoneNormalized: string, sessionToken?: string) {
   return Date.now() - verifiedAt < VERIFICATION_SESSION_MS;
 }
 
-async function findExistingClinicByPhone(phoneNormalized: string) {
+async function findExistingClinicByEmail(emailNormalized: string) {
   const supabase = createAdminClient();
 
-  const { data: byNormalized } = await supabase
+  const { data } = await supabase
     .from("clinics")
     .select("id")
-    .eq("phone_normalized", phoneNormalized)
+    .ilike("email", emailNormalized)
     .limit(1)
     .maybeSingle();
 
-  if (byNormalized) {
-    return byNormalized;
-  }
+  return data;
+}
 
-  const { data: byPhoneSuffix } = await supabase
-    .from("clinics")
-    .select("id")
-    .or(
-      `phone.ilike.%${phoneNormalized},phone.ilike.%+91${phoneNormalized},phone.ilike.%91${phoneNormalized}`,
-    )
-    .limit(1)
-    .maybeSingle();
+function parseRegistrationBody(body: RegistrationBody) {
+  const doctorName = String(body.doctor_name ?? "").trim();
+  const clinicName = String(body.clinic_name ?? "").trim();
+  const email = String(body.email ?? "").trim();
+  const avgTimeRaw = Number(body.avg_time_per_patient);
+  const consultationFeeRaw = Number(body.consultation_fee);
+  const avgTime = Number.isFinite(avgTimeRaw) && avgTimeRaw > 0 ? avgTimeRaw : 10;
+  const consultationFee =
+    Number.isFinite(consultationFeeRaw) && consultationFeeRaw > 0
+      ? consultationFeeRaw
+      : 500;
+  const clinicHours =
+    String(body.clinic_hours ?? "").trim() || "Mon-Sat 9:00 AM - 8:00 PM";
+  const googleReviewLink =
+    String(body.google_review_link ?? "").trim() || null;
+  const sessionToken = String(body.session_token ?? "").trim() || undefined;
 
-  return byPhoneSuffix;
+  return {
+    doctorName,
+    clinicName,
+    email,
+    avgTime,
+    consultationFee,
+    clinicHours,
+    googleReviewLink,
+    sessionToken,
+  };
 }
 
 export const POST = withSentryApiRoute(
   "POST",
   "/api/clinics",
   async function POST(request: Request) {
+    let body: RegistrationBody;
+
     try {
-      const body = (await request.json()) as ClinicRegistrationInput & {
-        session_token?: string;
-      };
+      body = (await request.json()) as RegistrationBody;
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request body. Expected JSON." },
+        { status: 400 },
+      );
+    }
 
-      const doctorName = body.doctor_name?.trim();
-      const clinicName = body.clinic_name?.trim();
-      const email = body.email?.trim();
-      const phone = body.phone?.trim();
-      const avgTime = Number(body.avg_time_per_patient);
-      const consultationFee = Number(body.consultation_fee ?? 500);
-      const clinicHours =
-        body.clinic_hours?.trim() ?? "Mon-Sat 9:00 AM - 8:00 PM";
-      const googleReviewLink = body.google_review_link?.trim() || null;
+    try {
+      const {
+        doctorName,
+        clinicName,
+        email,
+        avgTime,
+        consultationFee,
+        clinicHours,
+        googleReviewLink,
+        sessionToken,
+      } = parseRegistrationBody(body);
 
-      if (!doctorName || !clinicName || !email || !phone) {
+      if (!doctorName || !clinicName || !email) {
         return NextResponse.json(
-          { error: "All fields are required." },
+          { error: "Doctor name, clinic name, and email are required." },
           { status: 400 },
         );
       }
 
-      if (!Number.isFinite(avgTime) || avgTime <= 0) {
-        return NextResponse.json(
-          { error: "Average time per patient must be a positive number." },
-          { status: 400 },
-        );
-      }
-
-      const phoneNormalized = normalizePhone(phone);
-      if (phoneNormalized.length < 10) {
-        return NextResponse.json(
-          { error: "Please enter a valid 10-digit mobile number." },
-          { status: 400 },
-        );
-      }
-
-      const existingClinic = await findExistingClinicByPhone(phoneNormalized);
+      const emailNormalized = normalizeEmail(email);
+      const existingClinic = await findExistingClinicByEmail(emailNormalized);
       if (existingClinic) {
         return NextResponse.json(
-          { error: DUPLICATE_PHONE_MESSAGE, code: "TRIAL_ALREADY_USED" },
+          { error: DUPLICATE_EMAIL_MESSAGE, code: "TRIAL_ALREADY_USED" },
           { status: 400 },
         );
       }
 
-      const phoneVerified = await isPhoneVerified(
-        phoneNormalized,
-        body.session_token,
+      const emailVerified = await isEmailVerified(
+        emailNormalized,
+        sessionToken,
       );
-      if (!phoneVerified) {
+      if (!emailVerified) {
         return NextResponse.json(
           {
             error:
-              "Please verify your mobile number with WhatsApp OTP before registering.",
-            code: "PHONE_NOT_VERIFIED",
+              "Please verify your email address with the OTP before registering.",
+            code: "EMAIL_NOT_VERIFIED",
           },
           { status: 400 },
         );
       }
 
-      const supabase = createAdminClient();
-      const { data, error } = await supabase
-        .from("clinics")
-        .insert({
-          doctor_name: doctorName,
-          clinic_name: clinicName,
-          email,
-          phone,
-          phone_normalized: phoneNormalized,
-          avg_time_per_patient: Math.round(avgTime),
-          consultation_fee: consultationFee,
-          clinic_hours: clinicHours,
-          google_review_link: googleReviewLink,
-          whatsapp_number: phoneNormalized,
-          subscription_status: "pending_mandate",
-          trial_ends_at: null,
-          trial_started_at: null,
-        })
-        .select()
-        .single();
+      const trialStartedAt = new Date().toISOString();
+      const trialEndsAt = trialEndsAtFromNow();
 
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      const supabase = createAdminClient();
+      const clinicRow = {
+        doctor_name: doctorName,
+        clinic_name: clinicName,
+        email,
+        phone: email,
+        phone_normalized: null,
+        avg_time_per_patient: Math.round(avgTime),
+        consultation_fee: consultationFee,
+        clinic_hours: clinicHours,
+        google_review_link: googleReviewLink,
+        whatsapp_number: null,
+        subscription_status: "trialing",
+        trial_started_at: trialStartedAt,
+        trial_ends_at: trialEndsAt,
+        subscription_amount: 999,
+        subscription_currency: "INR",
+        subscription_plan: "monthly_999",
+        payment_provider: "cashfree",
+      };
+
+      const { data, error } = await insertClinicWithUniqueId<Clinic>(
+        async (clinicId, row) =>
+          supabase
+            .from("clinics")
+            .insert({ ...row, id: clinicId })
+            .select()
+            .single(),
+        clinicRow,
+      );
+
+      if (error || !data) {
+        return NextResponse.json(
+          { error: error?.message ?? "Registration failed." },
+          { status: 500 },
+        );
       }
 
-      return NextResponse.json({ clinic: data }, { status: 201 });
+      const response = NextResponse.json({ clinic: data }, { status: 201 });
+      setDoctorTokenCookie(response, data.id);
+      return response;
     } catch (error) {
       captureApiError(error);
       return NextResponse.json(
-        { error: "Invalid request body." },
-        { status: 400 },
+        {
+          error:
+            error instanceof Error ? error.message : "Registration failed.",
+        },
+        { status: 500 },
       );
     }
   },

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireDoctorSubscription } from "@/lib/subscription-guard";
 import { withSentryApiRoute } from "@/lib/sentry-api";
 import { createClient } from "@/lib/supabase/server";
 
@@ -9,8 +10,14 @@ type RouteContext = {
 export const GET = withSentryApiRoute(
   "GET",
   "/api/clinics/[id]",
-  async function GET(_request: Request, context: RouteContext) {
+  async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
+
+  const access = await requireDoctorSubscription(request, id);
+  if (access instanceof Response) {
+    return access;
+  }
+
   const supabase = await createClient();
 
   const { data: clinic, error: clinicError } = await supabase

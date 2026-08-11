@@ -6,6 +6,7 @@ const LEGAL_LINKS = [
   { href: "/privacy", label: "Privacy Policy" },
   { href: "/refund-policy", label: "Refund & Cancellation Policy" },
   { href: "/contact", label: "Contact Us" },
+  { href: "/data-deletion", label: "Data Deletion" },
 ] as const;
 
 export function SiteFooter() {

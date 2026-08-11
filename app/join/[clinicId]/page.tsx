@@ -4,11 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Loader2, Ticket } from "lucide-react";
+import { buildLiveTrackerUrl } from "@/lib/public-urls";
 
 export default function JoinPage() {
   const params = useParams<{ clinicId: string }>();
   const clinicId = params.clinicId;
   const [token, setToken] = useState<number | null>(null);
+  const [entryId, setEntryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +31,8 @@ export default function JoinPage() {
       }
 
       setToken(payload.entry.token_number);
+      setEntryId(payload.entry.id);
+      window.location.assign(buildLiveTrackerUrl(payload.entry.id));
     } catch (joinError) {
       setError(
         joinError instanceof Error
@@ -50,14 +54,24 @@ export default function JoinPage() {
         </p>
 
         {token ? (
-          <div className="mt-8 rounded-2xl bg-teal-700 px-6 py-10 text-white">
-            <p className="text-sm uppercase tracking-wide text-teal-100">
-              Your Token
-            </p>
-            <p className="mt-2 text-6xl font-bold">#{token}</p>
-            <p className="mt-4 text-sm text-teal-100">
-              Please wait in the waiting area. We&apos;ll call your number soon.
-            </p>
+          <div className="mt-8 space-y-4">
+            <div className="rounded-2xl bg-teal-700 px-6 py-10 text-white">
+              <p className="text-sm uppercase tracking-wide text-teal-100">
+                Your Token
+              </p>
+              <p className="mt-2 text-6xl font-bold">#{token}</p>
+              <p className="mt-4 text-sm text-teal-100">
+                Redirecting to your live tracker...
+              </p>
+            </div>
+            {entryId ? (
+              <a
+                href={buildLiveTrackerUrl(entryId)}
+                className="inline-flex w-full items-center justify-center rounded-2xl border border-teal-200 px-6 py-4 font-semibold text-teal-800 hover:bg-teal-50"
+              >
+                Open Live Tracker
+              </a>
+            ) : null}
           </div>
         ) : (
           <>

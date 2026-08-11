@@ -1,5 +1,7 @@
 import { Cashfree, CFEnvironment, type CreateOrderRequest } from "cashfree-pg";
+import { randomBytes } from "node:crypto";
 import {
+  assertLiveCashfreeEnvironment,
   getCashfreeAppId,
   getCashfreeMode,
   getCashfreeSecretKey,
@@ -8,8 +10,14 @@ import {
 import { normalizePhone } from "@/lib/phone";
 
 export const SKIPLINES_SUBSCRIPTION_AMOUNT = 999;
+export const SKIPLINES_SUBSCRIPTION_CURRENCY = "INR";
 
 export function getCashfreeClient() {
+  const configError = assertLiveCashfreeEnvironment();
+  if (configError && process.env.VERCEL_ENV === "production") {
+    throw new Error(configError);
+  }
+
   const appId = getCashfreeAppId();
   const secretKey = getCashfreeSecretKey();
 
@@ -26,7 +34,7 @@ export function getCashfreeClient() {
 }
 
 export function buildCashfreeOrderId(clinicId: string) {
-  const suffix = Date.now().toString(36);
+  const suffix = `${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`;
   return `ski_${clinicId.replace(/-/g, "").slice(0, 12)}_${suffix}`;
 }
 
@@ -44,7 +52,7 @@ export async function createSubscriptionOrder(input: {
   const cashfree = getCashfreeClient();
   const orderId = buildCashfreeOrderId(input.clinicId);
   const appUrl = getPublicAppUrl();
-  const returnUrl = `${appUrl}/dashboard?clinic=${input.clinicId}&payment=success&order_id={order_id}`;
+  const returnUrl = `${appUrl}/dashboard?clinic=${input.clinicId}&order_id={order_id}`;
   const notifyUrl = `${appUrl}/api/webhooks/cashfree`;
 
   const request: CreateOrderRequest = {
@@ -71,13 +79,14 @@ export async function createSubscriptionOrder(input: {
   const response = await cashfree.PGCreateOrder(request);
   const order = response.data;
 
-  if (!order.payment_session_id) {
+  // Fresh session per order — never persisted; only order_id is stored on clinics.
+  if (!order.payment_session_id?.trim()) {
     throw new Error("Cashfree did not return a payment session ID.");
   }
 
   return {
     order_id: order.order_id ?? orderId,
-    payment_session_id: order.payment_session_id,
+    payment_session_id: order.payment_session_id.trim(),
     order_status: order.order_status,
     order_amount: order.order_amount,
   };

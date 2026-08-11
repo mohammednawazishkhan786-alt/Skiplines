@@ -1,9 +1,12 @@
-import { createClient } from "@/lib/supabase/server";
-import { hasDashboardAccess } from "@/lib/subscription";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getSubscriptionAccessError } from "@/lib/subscription-access";
 import type { Clinic } from "@/lib/types";
 
+const PUBLIC_CLINIC_SELECT =
+  "id, doctor_name, clinic_name, avg_time_per_patient, current_token, clinic_hours, consultation_fee";
+
 export async function getClinicOrThrow(clinicId: string) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: clinic, error } = await supabase
     .from("clinics")
     .select("*")
@@ -17,21 +20,20 @@ export async function getClinicOrThrow(clinicId: string) {
   return { clinic: clinic as Clinic, error: null };
 }
 
-export function getSubscriptionAccessError(
-  clinic: Pick<
-    Clinic,
-    "subscription_status" | "trial_ends_at" | "subscription_expires_at"
-  >,
-) {
-  if (hasDashboardAccess(clinic)) {
-    return null;
+/** Public patient page — no private fields. */
+export async function getPublicClinicOrThrow(clinicId: string) {
+  const supabase = createAdminClient();
+  const { data: clinic, error } = await supabase
+    .from("clinics")
+    .select(PUBLIC_CLINIC_SELECT)
+    .eq("id", clinicId)
+    .single();
+
+  if (error || !clinic) {
+    return { clinic: null, error: "Clinic not found." as const };
   }
 
-  const status = clinic.subscription_status.toUpperCase();
-
-  if (status === "PENDING_MANDATE") {
-    return "Complete your ₹1 UPI mandate authorization to start your free trial.";
-  }
-
-  return "Your subscription has expired. Please renew to access the queue dashboard.";
+  return { clinic, error: null };
 }
+
+export { getSubscriptionAccessError };

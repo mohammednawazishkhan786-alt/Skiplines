@@ -1,37 +1,39 @@
-import { createHash, randomBytes, randomInt } from "node:crypto";
-import { sendWhatsAppOtp, isDevOtpBypassEnabled } from "@/lib/whatsapp-otp";
-import { normalizePhone } from "@/lib/phone";
+import { randomBytes } from "node:crypto";
+import { isValidEmail, normalizeEmail } from "@/lib/email";
+import {
+  emailOtpMatches,
+  generateOtp,
+  hashOtp,
+  OTP_LENGTH,
+  OTP_TTL_MS,
+} from "@/lib/otp-crypto";
+import { sendEmailOtp } from "@/lib/resend-otp";
 
-export const DUPLICATE_PHONE_MESSAGE =
-  "This mobile number has already used a 7-day free trial.";
+export const DUPLICATE_EMAIL_MESSAGE =
+  "This email address has already used a 7-day free trial.";
 
-export const OTP_LENGTH = 6;
-export const OTP_TTL_MS = 5 * 60 * 1000;
-export const VERIFICATION_SESSION_MS = 5 * 60 * 1000;
+/** @deprecated Use DUPLICATE_EMAIL_MESSAGE */
+export const DUPLICATE_PHONE_MESSAGE = DUPLICATE_EMAIL_MESSAGE;
 
-export function hashOtp(phoneNormalized: string, otp: string) {
-  return createHash("sha256")
-    .update(`${phoneNormalized}:${otp}`)
-    .digest("hex");
-}
-
-export function generateOtp() {
-  return String(randomInt(100000, 1000000));
-}
+export { OTP_LENGTH, OTP_TTL_MS, hashOtp, generateOtp, emailOtpMatches };
 
 export function createVerificationSessionToken() {
   return randomBytes(32).toString("hex");
 }
 
-export async function deliverOtp(phone: string, otp: string) {
-  const phoneNormalized = normalizePhone(phone);
-  const result = await sendWhatsAppOtp(phoneNormalized, otp);
+export const VERIFICATION_SESSION_MS = 5 * 60 * 1000;
 
-  if (result.channel === "dev") {
-    return { channel: "dev" as const, devOtp: otp };
+export async function deliverOtp(email: string, otp: string) {
+  const emailNormalized = normalizeEmail(email);
+
+  if (!isValidEmail(emailNormalized)) {
+    throw new Error("Please enter a valid email address.");
   }
 
-  return { channel: "whatsapp" as const, devOtp: undefined };
-}
+  const result = await sendEmailOtp(emailNormalized, otp);
 
-export { isDevOtpBypassEnabled };
+  return {
+    channel: result.channel,
+    devOtp: result.channel === "dev" ? otp : undefined,
+  };
+}

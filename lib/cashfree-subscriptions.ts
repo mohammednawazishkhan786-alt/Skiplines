@@ -72,7 +72,7 @@ export function buildCashfreeSubscriptionId(clinicId: string) {
 export async function createCashfreeSubscription(input: {
   clinicId: string;
   email: string;
-  phone: string;
+  phone?: string | null;
   doctorName: string;
   clinicName: string;
   skipTrial?: boolean;
@@ -88,7 +88,7 @@ export async function createCashfreeSubscription(input: {
     customer_details: {
       customer_name: input.doctorName || input.clinicName,
       customer_email: input.email,
-      customer_phone: normalizePhone(input.phone),
+      customer_phone: normalizePhone(input.phone ?? "") || "9999999999",
     },
     plan_details: {
       plan_name: "Skiplines Clinic Monthly",

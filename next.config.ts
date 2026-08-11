@@ -10,6 +10,20 @@ const nextConfig: NextConfig = {
         destination: "https://www.skiplines.in/:path*",
         permanent: true,
       },
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "skiplines-app.vercel.app" }],
+        destination: "https://www.skiplines.in/:path*",
+        permanent: true,
+      },
+      {
+        source: "/:path*",
+        has: [
+          { type: "host", value: "skiplines-app-nawazish-khans-projects.vercel.app" },
+        ],
+        destination: "https://www.skiplines.in/:path*",
+        permanent: true,
+      },
     ];
   },
 };

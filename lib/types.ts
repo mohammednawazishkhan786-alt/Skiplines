@@ -16,6 +16,17 @@ export type Clinic = {
   phone_normalized: string | null;
   subscription_expires_at: string | null;
   trial_started_at: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  next_billing_date: string | null;
+  last_payment_at: string | null;
+  subscription_amount: number | null;
+  subscription_currency: string | null;
+  subscription_plan: string | null;
+  payment_provider: string | null;
+  cancelled_at: string | null;
+  expired_at: string | null;
+  updated_at: string | null;
   subscription_status: string;
   trial_ends_at: string | null;
   created_at: string;
@@ -47,7 +58,6 @@ export type ClinicRegistrationInput = {
   doctor_name: string;
   clinic_name: string;
   email: string;
-  phone: string;
   avg_time_per_patient: number;
   consultation_fee?: number;
   clinic_hours?: string;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { requireDoctorAuth } from "@/lib/auth/doctor";
 import { fetchCashfreeSubscription } from "@/lib/cashfree-subscriptions";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
 
 function isMandateAuthorized(subscription: Record<string, unknown>) {
@@ -37,8 +38,13 @@ export const POST = withSentryApiRoute(
         );
       }
 
+      const authError = requireDoctorAuth(request, clinicId);
+      if (authError) {
+        return authError;
+      }
+
       const subscription = await fetchCashfreeSubscription(subscriptionId);
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       const { data: clinic } = await supabase
         .from("clinics")
         .select("subscription_status")
@@ -54,7 +60,7 @@ export const POST = withSentryApiRoute(
           status: clinic.subscription_status,
           mandate_authorized: false,
           message:
-            "Mandate authorization is pending. Complete the ₹1 UPI payment to activate your trial.",
+            "Mandate authorization is pending. Complete the ₹999 UPI payment to activate your subscription.",
         });
       }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { requireDoctorAuth } from "@/lib/auth/doctor";
 import { createCashfreeSubscription } from "@/lib/cashfree-subscriptions";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
 
 export const POST = withSentryApiRoute(
@@ -19,7 +20,12 @@ export const POST = withSentryApiRoute(
         );
       }
 
-      const supabase = await createClient();
+      const authError = requireDoctorAuth(request, clinicId);
+      if (authError) {
+        return authError;
+      }
+
+      const supabase = createAdminClient();
       const { data: clinic, error } = await supabase
         .from("clinics")
         .select(

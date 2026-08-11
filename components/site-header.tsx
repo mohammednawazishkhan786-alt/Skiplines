@@ -10,6 +10,9 @@ export function SiteHeader() {
           Skiplines
         </Link>
         <nav className="flex items-center gap-4 text-sm font-medium text-teal-900">
+          <Link href="/login" className="hover:text-teal-600">
+            Sign In
+          </Link>
           <Link href="/register" className="hover:text-teal-600">
             Register
           </Link>

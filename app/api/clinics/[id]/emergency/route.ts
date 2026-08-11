@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { requireDoctorSubscription } from "@/lib/subscription-guard";
 import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
-import { getClinicOrThrow, getSubscriptionAccessError } from "@/lib/clinic-access";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { promoteEmergencyToken } from "@/lib/queue";
 
 type RouteContext = {
@@ -13,6 +13,11 @@ export const POST = withSentryApiRoute(
   "/api/clinics/[id]/emergency",
   async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
+
+  const access = await requireDoctorSubscription(request, id);
+  if (access instanceof Response) {
+    return access;
+  }
 
   let entryId: string | undefined;
   try {
@@ -26,17 +31,7 @@ export const POST = withSentryApiRoute(
     return NextResponse.json({ error: "entry_id is required." }, { status: 400 });
   }
 
-  const { clinic, error: clinicLookupError } = await getClinicOrThrow(id);
-  if (!clinic) {
-    return NextResponse.json({ error: clinicLookupError }, { status: 404 });
-  }
-
-  const accessError = getSubscriptionAccessError(clinic);
-  if (accessError) {
-    return NextResponse.json({ error: accessError }, { status: 403 });
-  }
-
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   try {
     const entry = await promoteEmergencyToken(supabase, id, entryId);

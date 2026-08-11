@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { isCashfreeOrderPaid } from "@/lib/cashfree";
-import { createClient } from "@/lib/supabase/server";
+import { requireDoctorAuth } from "@/lib/auth/doctor";
+import { verifyAndActivatePayment } from "@/lib/cashfree-payment";
+import { sanitizeCashfreeErrorMessage } from "@/lib/cashfree-navigation";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
 
 export const POST = withSentryApiRoute(
@@ -19,40 +20,37 @@ export const POST = withSentryApiRoute(
         );
       }
 
-      const paid = await isCashfreeOrderPaid(orderId);
-      if (!paid) {
+      const authError = requireDoctorAuth(request, clinicId);
+      if (authError) {
+        return authError;
+      }
+
+      const result = await verifyAndActivatePayment(clinicId, orderId);
+      if (!result.ok) {
         return NextResponse.json(
-          { error: "Payment not completed yet.", status: "pending" },
-          { status: 402 },
+          {
+            error: result.error,
+            ...("paymentStatus" in result && result.paymentStatus
+              ? { status: result.paymentStatus }
+              : {}),
+          },
+          { status: result.status },
         );
       }
 
-      const supabase = await createClient();
-      const { data: clinic, error } = await supabase
-        .from("clinics")
-        .update({
-          cashfree_order_id: orderId,
-          subscription_status: "active",
-        })
-        .eq("id", clinicId)
-        .select("id, subscription_status, cashfree_order_id")
-        .single();
-
-      if (error || !clinic) {
-        return NextResponse.json({ error: "Clinic not found." }, { status: 404 });
-      }
-
       return NextResponse.json({
-        status: clinic.subscription_status,
-        order_id: clinic.cashfree_order_id,
-        message: "Subscription activated successfully.",
+        status: result.clinic.subscription_status,
+        order_id: result.clinic.cashfree_order_id,
+        subscription_expires_at: result.clinic.subscription_expires_at,
+        message: result.message,
       });
     } catch (error) {
       captureApiError(error);
       return NextResponse.json(
         {
-          error:
+          error: sanitizeCashfreeErrorMessage(
             error instanceof Error ? error.message : "Payment verification failed.",
+          ),
         },
         { status: 500 },
       );

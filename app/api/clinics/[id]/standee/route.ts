@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireDoctorSubscription } from "@/lib/subscription-guard";
 import { withSentryApiRoute } from "@/lib/sentry-api";
 import { generateStandeePdf } from "@/lib/pdf/standee";
 import { createClient } from "@/lib/supabase/server";
+import { getPublicAppUrl } from "@/lib/env";
 import { buildWhatsAppTokenUrl } from "@/lib/whatsapp";
 
 type RouteContext = {
@@ -11,8 +13,14 @@ type RouteContext = {
 export const GET = withSentryApiRoute(
   "GET",
   "/api/clinics/[id]/standee",
-  async function GET(_request: Request, context: RouteContext) {
+  async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
+
+  const access = await requireDoctorSubscription(request, id);
+  if (access instanceof Response) {
+    return access;
+  }
+
   const supabase = await createClient();
 
   const { data: clinic, error } = await supabase
@@ -26,15 +34,18 @@ export const GET = withSentryApiRoute(
   }
 
   const clinicWhatsApp = clinic.whatsapp_number ?? clinic.phone;
-  const whatsAppUrl = buildWhatsAppTokenUrl(clinic.id, clinicWhatsApp);
+  const appUrl = getPublicAppUrl();
+  const queueUrl = clinicWhatsApp
+    ? buildWhatsAppTokenUrl(clinic.id, clinicWhatsApp)
+    : `${appUrl}/join/${clinic.id}`;
 
   const pdfBuffer = await generateStandeePdf({
     clinicName: clinic.clinic_name,
     doctorName: clinic.doctor_name,
-    whatsAppUrl,
+    whatsAppUrl: queueUrl,
   });
 
-  const filename = `${clinic.clinic_name.replace(/\s+/g, "-").toLowerCase()}-whatsapp-standee.pdf`;
+  const filename = `${clinic.clinic_name.replace(/\s+/g, "-").toLowerCase()}-queue-standee.pdf`;
 
   return new NextResponse(pdfBuffer, {
     headers: {

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { enforceRateLimit, ipKey } from "@/lib/api-rate-limit";
 import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
 import { getClinicOrThrow, getSubscriptionAccessError } from "@/lib/clinic-access";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createQueueEntry } from "@/lib/queue";
 
 type RouteContext = {
@@ -13,7 +14,17 @@ export const POST = withSentryApiRoute(
   "/api/clinics/[id]/join",
   async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const supabase = await createClient();
+
+  const rateLimited = await enforceRateLimit(
+    request,
+    `${ipKey(request, "join")}:clinic:${id}`,
+    { windowMs: 60_000, max: 20 },
+  );
+  if (rateLimited) {
+    return rateLimited;
+  }
+
+  const supabase = createAdminClient();
 
   let patientPhone: string | undefined;
   let patientName: string | undefined;

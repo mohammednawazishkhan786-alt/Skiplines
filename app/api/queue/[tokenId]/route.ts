@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { PUBLIC_CLINIC_SELECT } from "@/lib/public-clinic";
+import { PUBLIC_TOKEN_SELECT } from "@/lib/public-token";
 import { withSentryApiRoute } from "@/lib/sentry-api";
 import { calculateEstimatedWait } from "@/lib/queue";
 import { createClient } from "@/lib/supabase/server";
@@ -16,7 +18,7 @@ export const GET = withSentryApiRoute(
 
   const { data: entry, error: entryError } = await supabase
     .from("tokens")
-    .select("*")
+    .select(PUBLIC_TOKEN_SELECT)
     .eq("id", tokenId)
     .single();
 
@@ -26,7 +28,7 @@ export const GET = withSentryApiRoute(
 
   const { data: clinic, error: clinicError } = await supabase
     .from("clinics")
-    .select("*")
+    .select(PUBLIC_CLINIC_SELECT)
     .eq("id", entry.clinic_id)
     .single();
 

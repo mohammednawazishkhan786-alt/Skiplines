@@ -53,16 +53,6 @@ for (const file of files) {
   const sql = readFileSync(join(migrationsDir, file), "utf8");
   console.log(`  → ${file}`);
 
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/`, {
-    method: "POST",
-    headers: {
-      apikey: apiKey,
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({}),
-  });
-
   // Use Supabase SQL via pg-meta endpoint (management API requires access token).
   // Fallback: execute statements individually via supabase-js if rpc unavailable.
   const statements = sql

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { getPublicAppUrl } from "@/lib/env";
+import { requireDoctorSubscription } from "@/lib/subscription-guard";
 import { withSentryApiRoute } from "@/lib/sentry-api";
-import { getClinicOrThrow, getSubscriptionAccessError } from "@/lib/clinic-access";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
 type RouteContext = {
@@ -11,20 +12,15 @@ type RouteContext = {
 export const POST = withSentryApiRoute(
   "POST",
   "/api/clinics/[id]/next",
-  async function POST(_request: Request, context: RouteContext) {
+  async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
 
-  const { clinic, error: clinicLookupError } = await getClinicOrThrow(id);
-  if (!clinic) {
-    return NextResponse.json({ error: clinicLookupError }, { status: 404 });
+  const access = await requireDoctorSubscription(request, id);
+  if (access instanceof Response) {
+    return access;
   }
 
-  const accessError = getSubscriptionAccessError(clinic);
-  if (accessError) {
-    return NextResponse.json({ error: accessError }, { status: 403 });
-  }
-
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data: currentlyServing } = await supabase
     .from("tokens")
@@ -77,7 +73,7 @@ export const POST = withSentryApiRoute(
     .update({ current_token: nextPatient.token_number })
     .eq("id", id);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getPublicAppUrl();
 
   if (called.patient_phone) {
     const message = `🔔 It's your turn! Token #${called.token_number} — please proceed to the doctor's room now. Live tracker: ${appUrl}/live/${called.id}`;

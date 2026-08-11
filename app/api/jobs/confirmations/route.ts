@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPublicAppUrl } from "@/lib/env";
 import { withSentryApiRoute } from "@/lib/sentry-api";
 import { isAuthorizedJobRequest } from "@/lib/auth/cron";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -15,7 +16,7 @@ export const POST = withSentryApiRoute(
   const supabase = createAdminClient();
   const now = new Date();
   const fifteenMinutesFromNow = new Date(now.getTime() + 15 * 60 * 1000);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getPublicAppUrl();
 
   const { data: entries, error } = await supabase
     .from("tokens")

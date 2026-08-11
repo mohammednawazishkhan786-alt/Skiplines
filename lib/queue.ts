@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getPublicAppUrl } from "@/lib/env";
 import type { Clinic, Token } from "@/lib/types";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
@@ -215,7 +216,7 @@ export async function promoteEmergencyToken(
     throw new Error(error?.message ?? "Emergency promotion failed.");
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getPublicAppUrl();
 
   for (const item of waiting) {
     if (item.id === entryId || !item.patient_phone) continue;
@@ -240,7 +241,7 @@ export async function notifyWaitingPatientsOfShift(
     .eq("status", "waiting")
     .neq("id", excludeEntryId);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getPublicAppUrl();
 
   for (const entry of waiting ?? []) {
     if (!entry.patient_phone) continue;
