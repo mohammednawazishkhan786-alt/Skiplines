@@ -4,6 +4,10 @@ function readEnv(name: string): string | undefined {
   return value;
 }
 
+function isSubscriptionTestModeEnv(): boolean {
+  return readEnv("SUBSCRIPTION_TEST_MODE")?.toLowerCase() === "true";
+}
+
 export function getOpenAIApiKey(): string | undefined {
   return readEnv("OPENAI_API_KEY");
 }
@@ -53,6 +57,11 @@ export type CashfreeMode = "production" | "sandbox";
 const PRODUCTION_MODE: CashfreeMode = "production";
 
 export function getCashfreeMode(): CashfreeMode {
+  if (isSubscriptionTestModeEnv()) {
+    const mode = readEnv("CASHFREE_MODE")?.toLowerCase();
+    return mode === "production" ? PRODUCTION_MODE : "sandbox";
+  }
+
   if (process.env.VERCEL_ENV === "production") {
     return PRODUCTION_MODE;
   }
@@ -63,6 +72,11 @@ export function getCashfreeMode(): CashfreeMode {
 
 /** Client bundle mode — must match {@link getCashfreeMode} on production. */
 export function getPublicCashfreeMode(): CashfreeMode {
+  if (isSubscriptionTestModeEnv()) {
+    const mode = readEnv("NEXT_PUBLIC_CASHFREE_MODE")?.toLowerCase();
+    return mode === "production" ? PRODUCTION_MODE : "sandbox";
+  }
+
   if (process.env.VERCEL_ENV === "production") {
     return PRODUCTION_MODE;
   }
@@ -113,6 +127,25 @@ export function assertLiveCashfreeEnvironment(): string | null {
   }
 
   return null;
+}
+
+/** Cashfree checkout validation — production or sandbox when SUBSCRIPTION_TEST_MODE=true. */
+export function assertCashfreeCheckoutEnvironment(): string | null {
+  if (!hasCashfreeCredentials()) {
+    return "Cashfree credentials are not configured.";
+  }
+
+  if (isSubscriptionTestModeEnv()) {
+    if (getCashfreeMode() !== "sandbox") {
+      return "SUBSCRIPTION_TEST_MODE requires CASHFREE_MODE=sandbox.";
+    }
+    if (getPublicCashfreeMode() !== "sandbox") {
+      return "SUBSCRIPTION_TEST_MODE requires NEXT_PUBLIC_CASHFREE_MODE=sandbox.";
+    }
+    return null;
+  }
+
+  return assertLiveCashfreeEnvironment();
 }
 
 export const CANONICAL_PRODUCTION_SITE_URL = "https://www.skiplines.in";

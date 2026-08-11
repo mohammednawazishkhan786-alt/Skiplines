@@ -3,6 +3,7 @@ import { enforceRateLimit, ipKey } from "@/lib/api-rate-limit";
 import { getPublicAppUrl } from "@/lib/env";
 import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
 import { notifyWaitingPatientsOfShift, shiftTokenLate } from "@/lib/queue";
+import { toPublicToken } from "@/lib/public-token";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
@@ -44,7 +45,7 @@ export const POST = withSentryApiRoute(
       );
     }
 
-    return NextResponse.json({ entry });
+    return NextResponse.json({ entry: toPublicToken(entry) });
   } catch (error) {
     captureApiError(error);
     return NextResponse.json(

@@ -1,19 +1,28 @@
 import { Cashfree, CFEnvironment, type CreateOrderRequest } from "cashfree-pg";
 import { randomBytes } from "node:crypto";
 import {
-  assertLiveCashfreeEnvironment,
+  assertCashfreeCheckoutEnvironment,
   getCashfreeAppId,
   getCashfreeMode,
   getCashfreeSecretKey,
   getPublicAppUrl,
 } from "@/lib/env";
 import { normalizePhone } from "@/lib/phone";
+import {
+  getSubscriptionAmountInr,
+  PRODUCTION_SUBSCRIPTION_AMOUNT_INR,
+} from "@/lib/subscription-access";
 
-export const SKIPLINES_SUBSCRIPTION_AMOUNT = 999;
+/** @deprecated Use getSubscriptionAmountInr() — production default is 999. */
+export const SKIPLINES_SUBSCRIPTION_AMOUNT = PRODUCTION_SUBSCRIPTION_AMOUNT_INR;
 export const SKIPLINES_SUBSCRIPTION_CURRENCY = "INR";
 
+export function resolveSkipelinesSubscriptionAmount() {
+  return getSubscriptionAmountInr();
+}
+
 export function getCashfreeClient() {
-  const configError = assertLiveCashfreeEnvironment();
+  const configError = assertCashfreeCheckoutEnvironment();
   if (configError && process.env.VERCEL_ENV === "production") {
     throw new Error(configError);
   }
@@ -55,11 +64,12 @@ export async function createSubscriptionOrder(input: {
   const returnUrl = `${appUrl}/dashboard?clinic=${input.clinicId}&order_id={order_id}`;
   const notifyUrl = `${appUrl}/api/webhooks/cashfree`;
 
+  const amount = resolveSkipelinesSubscriptionAmount();
   const request: CreateOrderRequest = {
     order_id: orderId,
-    order_amount: SKIPLINES_SUBSCRIPTION_AMOUNT,
+    order_amount: amount,
     order_currency: "INR",
-    order_note: "Skiplines clinic subscription — ₹999/month",
+    order_note: `Skiplines clinic subscription — ₹${amount}`,
     customer_details: {
       customer_id: input.clinicId,
       customer_email: input.email,

@@ -1,7 +1,68 @@
 import type { Clinic } from "./types";
 
-export const TRIAL_DAYS = 7;
-export const SUBSCRIPTION_AMOUNT_INR = 999;
+/**
+ * Runtime subscription configuration.
+ * Production defaults are unchanged unless SUBSCRIPTION_TEST_MODE=true.
+ */
+
+export const PRODUCTION_TRIAL_DAYS = 7;
+export const PRODUCTION_SUBSCRIPTION_AMOUNT_INR = 999;
+export const PRODUCTION_SUBSCRIPTION_PLAN = "monthly_999";
+
+export const TEST_TRIAL_MS = 60_000;
+export const TEST_SUBSCRIPTION_AMOUNT_INR = 1;
+export const TEST_SUBSCRIPTION_PLAN = "test_1min";
+export const TEST_PERIOD_MS = 60_000;
+
+export function isSubscriptionTestMode(): boolean {
+  return process.env.SUBSCRIPTION_TEST_MODE?.trim().toLowerCase() === "true";
+}
+
+export function getSubscriptionAmountInr(): number {
+  return isSubscriptionTestMode()
+    ? TEST_SUBSCRIPTION_AMOUNT_INR
+    : PRODUCTION_SUBSCRIPTION_AMOUNT_INR;
+}
+
+export function getTrialDurationMs(): number {
+  return isSubscriptionTestMode()
+    ? TEST_TRIAL_MS
+    : PRODUCTION_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+}
+
+export function getSubscriptionPeriodMs(): number | null {
+  return isSubscriptionTestMode() ? TEST_PERIOD_MS : null;
+}
+
+export function getSubscriptionPlanId(): string {
+  return isSubscriptionTestMode()
+    ? TEST_SUBSCRIPTION_PLAN
+    : PRODUCTION_SUBSCRIPTION_PLAN;
+}
+
+export function trialEndsAtFromConfigured(now = Date.now()): string {
+  return new Date(now + getTrialDurationMs()).toISOString();
+}
+
+export function firstChargeTimeFromConfigured(now = Date.now()): string {
+  return trialEndsAtFromConfigured(now);
+}
+
+export function subscriptionPaymentRequiredMessage(): string {
+  const amount = getSubscriptionAmountInr();
+  const period = isSubscriptionTestMode() ? "1 minute" : "1 month";
+  return `Your free trial has ended. Pay ₹${amount} to unlock Skiplines for ${period}.`;
+}
+
+export function subscriptionPaymentFailedMessage(): string {
+  const amount = getSubscriptionAmountInr();
+  return `Your last payment failed. Pay ₹${amount} to reactivate Skiplines.`;
+}
+
+/** Production trial length in days (unchanged when test mode is off). */
+export const TRIAL_DAYS = PRODUCTION_TRIAL_DAYS;
+/** Production subscription amount in INR (unchanged when test mode is off). */
+export const SUBSCRIPTION_AMOUNT_INR = PRODUCTION_SUBSCRIPTION_AMOUNT_INR;
 
 export function normalizeSubscriptionStatus(status: string): string {
   return status.trim().toLowerCase();
@@ -57,6 +118,9 @@ export function getTrialDaysRemaining(
 }
 
 export function trialEndsAtFromNow(days = TRIAL_DAYS) {
+  if (isSubscriptionTestMode()) {
+    return trialEndsAtFromConfigured();
+  }
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
@@ -73,17 +137,20 @@ export function getSubscriptionAccessError(
   const status = normalizeSubscriptionStatus(clinic.subscription_status);
 
   if (status === "pending_mandate" || status === "pending_payment") {
-    return "Your free trial has ended. Pay ₹999 to unlock Skiplines for 1 month.";
+    return subscriptionPaymentRequiredMessage();
   }
 
   if (status === "payment_failed") {
-    return "Your last payment failed. Pay ₹999 to reactivate Skiplines.";
+    return subscriptionPaymentFailedMessage();
   }
 
-  return "Your free trial has ended. Pay ₹999 to unlock Skiplines for 1 month.";
+  return subscriptionPaymentRequiredMessage();
 }
 
 export function firstChargeTimeFromNow(days = TRIAL_DAYS) {
+  if (isSubscriptionTestMode()) {
+    return firstChargeTimeFromConfigured();
+  }
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 

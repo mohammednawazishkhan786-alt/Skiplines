@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { enforceRateLimit, ipKey } from "@/lib/api-rate-limit";
 import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
 import { getClinicOrThrow, getSubscriptionAccessError } from "@/lib/clinic-access";
+import { toPublicToken } from "@/lib/public-token";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createQueueEntry } from "@/lib/queue";
 
@@ -56,7 +57,7 @@ export const POST = withSentryApiRoute(
       isEmergency,
     });
 
-    return NextResponse.json({ entry }, { status: 201 });
+    return NextResponse.json({ entry: toPublicToken(entry) }, { status: 201 });
   } catch (error) {
     captureApiError(error);
     return NextResponse.json(

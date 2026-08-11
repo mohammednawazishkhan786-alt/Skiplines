@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local e2e / audit artifacts (never commit)
+.e2e-email.tmp
+.e2e-preview-state.json
+.e2e-prod-acceptance-state.json
+.lighthouse-desktop.json
+.lighthouse-mobile.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

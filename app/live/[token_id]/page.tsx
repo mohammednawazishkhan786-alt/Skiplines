@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Ticket,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import type { Clinic, QueueEntry } from "@/lib/types";
 
 type LiveData = {
@@ -73,41 +72,16 @@ export default function LiveTrackerPage() {
   useEffect(() => {
     if (!data?.entry.clinic_id) return;
 
-    const supabase = createClient();
-    const clinicId = data.entry.clinic_id;
-
-    const channel = supabase
-      .channel(`live-${tokenId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tokens",
-          filter: `clinic_id=eq.${clinicId}`,
-        },
-        () => {
-          void loadData();
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "clinics",
-          filter: `id=eq.${clinicId}`,
-        },
-        () => {
-          void loadData();
-        },
-      )
-      .subscribe();
+    // Poll the sanitized API — do not subscribe to base-table Realtime
+    // (anon has no SELECT on clinics/tokens after security lockdown).
+    const intervalId = window.setInterval(() => {
+      void loadData();
+    }, 4000);
 
     return () => {
-      void supabase.removeChannel(channel);
+      window.clearInterval(intervalId);
     };
-  }, [data?.entry.clinic_id, tokenId, loadData]);
+  }, [data?.entry.clinic_id, loadData]);
 
   async function handleLateShift() {
     if (!tokenId) return;

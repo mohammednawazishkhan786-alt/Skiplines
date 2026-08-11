@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireDoctorSubscription } from "@/lib/subscription-guard";
 import { withSentryApiRoute } from "@/lib/sentry-api";
 import { generateStandeePdf } from "@/lib/pdf/standee";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getPublicAppUrl } from "@/lib/env";
 import { buildWhatsAppTokenUrl } from "@/lib/whatsapp";
 
@@ -21,7 +21,7 @@ export const GET = withSentryApiRoute(
     return access;
   }
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data: clinic, error } = await supabase
     .from("clinics")

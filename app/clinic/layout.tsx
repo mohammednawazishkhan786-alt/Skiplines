@@ -1,0 +1,14 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+  title: "Clinic — Skiplines",
+};
+
+export default function ClinicLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return children;
+}

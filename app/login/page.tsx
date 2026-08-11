@@ -116,11 +116,13 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-2xl border border-teal-200 bg-white p-8 shadow-sm">
-          <label className="block text-sm font-medium text-teal-900">
+          <label className="block text-sm font-medium text-teal-900" htmlFor="login-email">
             Email Address
           </label>
           <input
+            id="login-email"
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(event) => {
               setEmail(event.target.value);
@@ -130,7 +132,7 @@ export default function LoginPage() {
               setOtpMessage(null);
             }}
             placeholder="doctor@gmail.com"
-            className="mt-2 w-full rounded-xl border border-teal-200 px-4 py-3 text-teal-950 outline-none focus:border-teal-500"
+            className="mt-2 w-full rounded-xl border border-teal-200 px-4 py-3 text-teal-950 outline-none focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500"
           />
 
           <button
@@ -160,19 +162,22 @@ export default function LoginPage() {
 
           {otpSent ? (
             <div className="mt-6 border-t border-teal-100 pt-6">
-              <label className="block text-sm font-medium text-teal-900">
+              <label className="block text-sm font-medium text-teal-900" htmlFor="login-otp">
                 6-digit OTP
               </label>
               <input
+                id="login-otp"
                 type="text"
                 inputMode="numeric"
+                autoComplete="one-time-code"
                 maxLength={6}
                 value={otp}
                 onChange={(event) =>
                   setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))
                 }
                 placeholder="Enter OTP from your inbox"
-                className="mt-2 w-full rounded-xl border border-teal-200 px-4 py-3 text-teal-950 outline-none focus:border-teal-500"
+                className="mt-2 w-full rounded-xl border border-teal-200 px-4 py-3 text-teal-950 outline-none focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500"
+                aria-describedby={error ? "login-error" : undefined}
               />
 
               <button
@@ -194,7 +199,7 @@ export default function LoginPage() {
           ) : null}
 
           {error ? (
-            <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p id="login-error" role="alert" className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </p>
           ) : null}

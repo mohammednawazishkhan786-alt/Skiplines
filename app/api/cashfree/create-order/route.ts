@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 import { requireDoctorAuth } from "@/lib/auth/doctor";
 import {
   createSubscriptionOrder,
-  SKIPLINES_SUBSCRIPTION_AMOUNT,
+  resolveSkipelinesSubscriptionAmount,
 } from "@/lib/cashfree";
 import { sanitizeCashfreeErrorMessage } from "@/lib/cashfree-navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  assertLiveCashfreeEnvironment,
+  assertCashfreeCheckoutEnvironment,
   getCashfreeCheckoutMode,
   getPublicAppUrl,
 } from "@/lib/env";
+import { isSubscriptionTestMode } from "@/lib/subscription-access";
 import {
   isPaidSubscriptionActive,
   isTrialActive,
@@ -22,9 +23,9 @@ export const POST = withSentryApiRoute(
   "/api/cashfree/create-order",
   async function POST(request: Request) {
     try {
-      const configError = assertLiveCashfreeEnvironment();
+      const configError = assertCashfreeCheckoutEnvironment();
       if (configError) {
-        console.error(`[cashfree] live config error: ${configError}`);
+        console.error(`[cashfree] checkout config error: ${configError}`);
         return NextResponse.json(
           { success: false, error: configError },
           { status: 500 },
@@ -32,7 +33,7 @@ export const POST = withSentryApiRoute(
       }
 
       const cashfreeMode = getCashfreeCheckoutMode();
-      if (cashfreeMode !== "production") {
+      if (!isSubscriptionTestMode() && cashfreeMode !== "production") {
         return NextResponse.json(
           {
             success: false,
@@ -116,15 +117,19 @@ export const POST = withSentryApiRoute(
       const appUrl = getPublicAppUrl();
       const returnUrl = `${appUrl}/dashboard?clinic=${clinicId}&order_id=${order.order_id}`;
 
+      const amount = resolveSkipelinesSubscriptionAmount();
+      const periodLabel = isSubscriptionTestMode() ? "1 minute" : "1 month";
+
       return NextResponse.json({
         success: true,
         order_id: order.order_id,
         payment_session_id: paymentSessionId,
         cashfree_mode: cashfreeMode,
         order_status: order.order_status,
-        amount: SKIPLINES_SUBSCRIPTION_AMOUNT,
-        plan: `₹${SKIPLINES_SUBSCRIPTION_AMOUNT} for 1 month`,
+        amount,
+        plan: `₹${amount} for ${periodLabel}`,
         return_url: returnUrl,
+        subscription_test_mode: isSubscriptionTestMode(),
       });
     } catch (error) {
       captureApiError(error);

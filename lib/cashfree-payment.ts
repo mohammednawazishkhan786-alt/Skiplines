@@ -1,20 +1,18 @@
 import {
   fetchCashfreeOrder,
   isCashfreeOrderPaid,
-  SKIPLINES_SUBSCRIPTION_AMOUNT,
+  resolveSkipelinesSubscriptionAmount,
   SKIPLINES_SUBSCRIPTION_CURRENCY,
 } from "@/lib/cashfree";
 import { upsertPaymentTransaction } from "@/lib/payment-audit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getSubscriptionAmountInr } from "@/lib/subscription-access";
 import {
   extendMonthlyPeriod,
+  resolveSubscriptionPlan,
   SUBSCRIPTION_CURRENCY,
-  SUBSCRIPTION_PLAN,
 } from "@/lib/subscription-periods";
-import {
-  isPaidSubscriptionActive,
-  SUBSCRIPTION_AMOUNT_INR,
-} from "@/lib/subscription";
+import { isPaidSubscriptionActive } from "@/lib/subscription";
 
 type ClinicPaymentRow = {
   id: string;
@@ -71,15 +69,17 @@ export async function activateClinicSubscription(
 
   const period = extendMonthlyPeriod(existing.current_period_end);
   const now = new Date().toISOString();
+  const amount = getSubscriptionAmountInr();
+  const plan = resolveSubscriptionPlan();
 
   const { data: clinic, error } = await supabase
     .from("clinics")
     .update({
       cashfree_order_id: orderId,
       subscription_status: "active",
-      subscription_amount: SUBSCRIPTION_AMOUNT_INR,
+      subscription_amount: amount,
       subscription_currency: SUBSCRIPTION_CURRENCY,
-      subscription_plan: SUBSCRIPTION_PLAN,
+      subscription_plan: plan,
       payment_provider: "cashfree",
       subscription_expires_at: period.subscription_expires_at,
       current_period_start: period.current_period_start,
@@ -106,7 +106,7 @@ export async function activateClinicSubscription(
   await upsertPaymentTransaction({
     clinicId,
     providerOrderId: orderId,
-    amount: SUBSCRIPTION_AMOUNT_INR,
+    amount,
     currency: SKIPLINES_SUBSCRIPTION_CURRENCY,
     status: "success",
     eventType: "payment_success",
@@ -189,8 +189,9 @@ export async function verifyAndActivatePayment(clinicId: string, orderId: string
     };
   }
 
+  const expectedAmount = resolveSkipelinesSubscriptionAmount();
   const orderAmount = Number(order.order_amount);
-  if (orderAmount !== SKIPLINES_SUBSCRIPTION_AMOUNT) {
+  if (orderAmount !== expectedAmount) {
     return {
       ok: false as const,
       status: 400,
@@ -236,8 +237,9 @@ export async function activateFromWebhookOrder(orderId: string) {
     return { ok: false as const, status: "missing_clinic" as const };
   }
 
+  const expectedAmount = resolveSkipelinesSubscriptionAmount();
   const orderAmount = Number(order.order_amount);
-  if (orderAmount !== SKIPLINES_SUBSCRIPTION_AMOUNT) {
+  if (orderAmount !== expectedAmount) {
     return { ok: false as const, status: "invalid_amount" as const };
   }
 

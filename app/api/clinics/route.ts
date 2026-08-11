@@ -8,6 +8,7 @@ import {
   VERIFICATION_SESSION_MS,
 } from "@/lib/otp";
 import { trialEndsAtFromNow } from "@/lib/subscription";
+import { getSubscriptionAmountInr, getSubscriptionPlanId } from "@/lib/subscription-access";
 import { normalizeEmail } from "@/lib/email";
 import type { Clinic } from "@/lib/types";
 
@@ -168,9 +169,9 @@ export const POST = withSentryApiRoute(
         subscription_status: "trialing",
         trial_started_at: trialStartedAt,
         trial_ends_at: trialEndsAt,
-        subscription_amount: 999,
+        subscription_amount: getSubscriptionAmountInr(),
         subscription_currency: "INR",
-        subscription_plan: "monthly_999",
+        subscription_plan: getSubscriptionPlanId(),
         payment_provider: "cashfree",
       };
 
