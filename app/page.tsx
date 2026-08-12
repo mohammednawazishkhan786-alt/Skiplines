@@ -6,7 +6,7 @@ import { SiteHeader } from "@/components/site-header";
 import { CANONICAL_PRODUCTION_SITE_URL } from "@/lib/env";
 
 export const metadata: Metadata = {
-  title: "Skiplines — Skip the Wait",
+  title: { absolute: "Skiplines — Skip the Wait" },
   description: "Digital queue management for clinics and doctors.",
 };
 

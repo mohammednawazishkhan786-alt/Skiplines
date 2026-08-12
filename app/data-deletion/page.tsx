@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
-  title: "Data Deletion Instructions — Skiplines",
+  title: "Data Deletion Instructions",
   description:
     "How to request deletion of your personal data from Skiplines, including WhatsApp and queue data.",
 };

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
-  title: "Clinic — Skiplines",
+  title: "Clinic",
 };
 
 export default function ClinicLayout({

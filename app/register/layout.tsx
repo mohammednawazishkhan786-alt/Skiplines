@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
-  title: "Join Queue",
+  title: "Doctor Registration",
 };
 
-export default function JoinLayout({
+export default function RegisterLayout({
   children,
 }: {
   children: React.ReactNode;

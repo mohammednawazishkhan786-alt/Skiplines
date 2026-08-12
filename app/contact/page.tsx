@@ -3,7 +3,7 @@ import { Mail, MapPin, Phone, Stethoscope } from "lucide-react";
 import { LegalPageLayout } from "@/components/legal-page";
 
 export const metadata: Metadata = {
-  title: "Contact Us — Skiplines",
+  title: "Contact Us",
   description:
     "Contact Skiplines customer support for OPD token and queue management help.",
 };

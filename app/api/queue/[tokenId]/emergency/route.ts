@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { enforceRateLimit, ipKey } from "@/lib/api-rate-limit";
-import { getClinicOrThrow, getSubscriptionAccessError } from "@/lib/clinic-access";
 import { promoteEmergencyToken } from "@/lib/queue";
 import { toPublicToken } from "@/lib/public-token";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
+import { requireDoctorSubscription } from "@/lib/subscription-guard";
 
 type RouteContext = {
   params: Promise<{ tokenId: string }>;
@@ -55,16 +55,9 @@ export const POST = withSentryApiRoute(
       );
     }
 
-    const { clinic, error: clinicLookupError } = await getClinicOrThrow(
-      token.clinic_id,
-    );
-    if (!clinic) {
-      return NextResponse.json({ error: clinicLookupError }, { status: 404 });
-    }
-
-    const accessError = getSubscriptionAccessError(clinic);
-    if (accessError) {
-      return NextResponse.json({ error: accessError }, { status: 403 });
+    const access = await requireDoctorSubscription(request, token.clinic_id);
+    if (access instanceof Response) {
+      return access;
     }
 
     try {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Skiplines",
+  title: "Privacy Policy",
   description:
     "How Skiplines collects, uses, and protects clinic and patient data, including WhatsApp integration.",
 };

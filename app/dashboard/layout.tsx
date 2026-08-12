@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
-  title: "Dashboard — Skiplines",
+  title: "Dashboard",
 };
 
 export default function DashboardLayout({

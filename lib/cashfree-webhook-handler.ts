@@ -1,5 +1,8 @@
 import { verifyCashfreeWebhook } from "@/lib/cashfree";
 import { activateFromWebhookOrder } from "@/lib/cashfree-payment";
+import {
+  buildSubscriptionWebhookEventId,
+} from "@/lib/subscription-webhook-id";
 import { recordWebhookEvent } from "@/lib/payment-audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -25,6 +28,7 @@ type PgWebhookPayload = {
 };
 
 type SubscriptionWebhookPayload = {
+  event_id?: string;
   type?: string;
   data?: {
     subscription_details?: {
@@ -134,7 +138,10 @@ function extractSubscriptionId(payload: SubscriptionWebhookPayload) {
   return payload.data?.subscription_details?.subscription_id ?? null;
 }
 
-async function handleSubscriptionWebhook(payload: SubscriptionWebhookPayload) {
+async function handleSubscriptionWebhook(
+  payload: SubscriptionWebhookPayload,
+  rawBody: string,
+) {
   const eventType = normalizeEventType(payload.type ?? "");
   const subscriptionId = extractSubscriptionId(payload);
   const clinicIdFromTags = extractClinicId(payload);
@@ -149,6 +156,27 @@ async function handleSubscriptionWebhook(payload: SubscriptionWebhookPayload) {
       .eq("cashfree_subscription_id", subscriptionId)
       .maybeSingle();
     clinicId = clinic?.id ?? null;
+  }
+
+  const eventId = buildSubscriptionWebhookEventId(
+    eventType,
+    rawBody,
+    payload.event_id,
+  );
+
+  try {
+    const recorded = await recordWebhookEvent({
+      eventId,
+      eventType,
+      clinicId,
+      providerOrderId: subscriptionId,
+      payload,
+    });
+    if (recorded.duplicate) {
+      return Response.json({ status: "duplicate" });
+    }
+  } catch (error) {
+    captureApiError(error);
   }
 
   if (!clinicId) {
@@ -271,7 +299,7 @@ export async function handleCashfreeWebhook(request: Request) {
       return handlePgPaymentWebhook(payload, eventType);
     }
 
-    return handleSubscriptionWebhook(payload);
+    return handleSubscriptionWebhook(payload, rawBody);
   } catch (error) {
     captureApiError(error);
     return Response.json({ status: "error" }, { status: 500 });

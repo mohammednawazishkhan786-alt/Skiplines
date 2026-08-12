@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LegalPageLayout } from "@/components/legal-page";
 
 export const metadata: Metadata = {
-  title: "Refund & Cancellation Policy — Skiplines",
+  title: "Refund & Cancellation Policy",
   description:
     "Refund and cancellation terms for Skiplines OPD token and subscription services.",
 };

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
-  title: "Live Queue — Skiplines",
+  title: "Live Queue",
 };
 
 export default function LiveLayout({

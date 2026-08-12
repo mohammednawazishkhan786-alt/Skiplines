@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LegalPageLayout } from "@/components/legal-page";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions — Skiplines",
+  title: "Terms & Conditions",
   description:
     "Terms and conditions for using Skiplines OPD token and queue management platform.",
 };
