@@ -71,12 +71,15 @@ export const POST = withSentryApiRoute(
     const supabase = createAdminClient();
 
     try {
-      const entry = await createQueueEntry(supabase, clinic, {
+      const { entry, existing } = await createQueueEntry(supabase, clinic, {
         patientPhone,
         patientName,
       });
 
-      return NextResponse.json({ entry: toPublicToken(entry) }, { status: 201 });
+      return NextResponse.json(
+        { entry: toPublicToken(entry), ...(existing ? { existing: true } : {}) },
+        { status: existing ? 200 : 201 },
+      );
     } catch (error) {
       captureApiError(error);
       return NextResponse.json(

@@ -31,4 +31,14 @@ describe("queue concurrency contracts", () => {
     assert.match(migration, /revoke all[\s\S]*anon, authenticated/);
     assert.match(migration, /pg_advisory_xact_lock/);
   });
+
+  it("migration 019 enforces one waiting token per phone per clinic", async () => {
+    const { readFileSync } = await import("node:fs");
+    const migration = readFileSync(
+      "supabase/migrations/019_tokens_one_waiting_per_phone.sql",
+      "utf8",
+    );
+    assert.match(migration, /tokens_one_waiting_per_phone_per_clinic/);
+    assert.match(migration, /if found then\s+return v_entry;/);
+  });
 });

@@ -101,20 +101,22 @@ export const POST = withSentryApiRoute(
             }
 
             if (upper.startsWith("TOKEN") || upper.startsWith("JOIN")) {
-              const queueEntry = await createQueueEntry(
+              const { entry: queueEntry, existing } = await createQueueEntry(
                 supabase,
                 clinic as Clinic,
                 { patientPhone },
               );
 
-              const reply = `✅ Token #${queueEntry.token_number} issued for ${clinic.clinic_name}. Track your wait live: ${appUrl}/live/${queueEntry.id}`;
+              const reply = existing
+                ? `You already have Token #${queueEntry.token_number} waiting at ${clinic.clinic_name}. Track live: ${appUrl}/live/${queueEntry.id}`
+                : `✅ Token #${queueEntry.token_number} issued for ${clinic.clinic_name}. Track your wait live: ${appUrl}/live/${queueEntry.id}`;
 
               await sendWhatsAppMessage(patientPhone, reply);
               await logNotification(
                 clinicId,
                 queueEntry.id,
                 patientPhone,
-                "token_issued",
+                existing ? "token_existing" : "token_issued",
                 reply,
               );
               continue;

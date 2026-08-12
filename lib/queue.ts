@@ -1,7 +1,63 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Clinic, Token } from "@/lib/types";
+import { isUniqueViolationError } from "@/lib/clinic-registration";
+import { normalizePhone } from "@/lib/phone";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 import { getPublicAppUrl } from "@/lib/env";
+
+export type CreateQueueEntryResult = {
+  entry: Token;
+  existing: boolean;
+};
+
+export function normalizeQueuePatientPhone(
+  phone?: string | null,
+): string | null {
+  if (phone === undefined || phone === null) {
+    return null;
+  }
+
+  const trimmed = phone.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return normalizePhone(trimmed);
+}
+
+export function isExistingQueueEntry(
+  entry: Pick<Token, "id" | "created_at">,
+  requestedAtMs: number,
+  preExisting: Pick<Token, "id"> | null,
+): boolean {
+  if (preExisting && preExisting.id === entry.id) {
+    return true;
+  }
+
+  return new Date(entry.created_at).getTime() < requestedAtMs - 100;
+}
+
+export async function findWaitingTokenByPhone(
+  supabase: SupabaseClient,
+  clinicId: string,
+  patientPhone: string,
+): Promise<Token | null> {
+  const { data, error } = await supabase
+    .from("tokens")
+    .select("*")
+    .eq("clinic_id", clinicId)
+    .eq("patient_phone", patientPhone)
+    .eq("status", "waiting")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data as Token | null) ?? null;
+}
 
 export async function getNextQueuePosition(
   supabase: SupabaseClient,
@@ -26,25 +82,72 @@ export async function createQueueEntry(
     patientPhone?: string;
     patientName?: string;
   } = {},
-): Promise<Token> {
-  // Prefer DB-atomic RPC (advisory lock) when migration 017 is applied.
+): Promise<CreateQueueEntryResult> {
+  const patientPhone = normalizeQueuePatientPhone(options.patientPhone);
+  const patientName = options.patientName?.trim() || null;
+  const requestedAtMs = Date.now();
+  let preExistingBeforeRpc: Token | null = null;
+
+  if (patientPhone) {
+    preExistingBeforeRpc = await findWaitingTokenByPhone(
+      supabase,
+      clinic.id,
+      patientPhone,
+    );
+    if (preExistingBeforeRpc) {
+      return { entry: preExistingBeforeRpc, existing: true };
+    }
+  }
+
+  // Prefer DB-atomic RPC (advisory lock) when migration 017+ is applied.
   const { data: rpcEntry, error: rpcError } = await supabase.rpc(
     "join_queue_atomic",
     {
       p_clinic_id: clinic.id,
-      p_patient_name: options.patientName ?? null,
-      p_patient_phone: options.patientPhone ?? null,
+      p_patient_name: patientName,
+      p_patient_phone: patientPhone,
       p_is_emergency: false,
       p_avg_time_per_patient: clinic.avg_time_per_patient,
     },
   );
 
   if (!rpcError && rpcEntry) {
-    return rpcEntry as Token;
+    const entry = rpcEntry as Token;
+    return {
+      entry,
+      existing: isExistingQueueEntry(entry, requestedAtMs, preExistingBeforeRpc),
+    };
   }
 
-  // Fallback path for environments where RPC is not yet applied.
-  return createQueueEntryLegacy(supabase, clinic, options);
+  if (rpcError && !isUniqueViolationError(rpcError)) {
+    // Fallback path for environments where RPC is not yet applied.
+    return createQueueEntryLegacy(supabase, clinic, {
+      patientPhone: patientPhone ?? undefined,
+      patientName: patientName ?? undefined,
+      requestedAtMs,
+    });
+  }
+
+  if (rpcError && patientPhone) {
+    const recovered = await findWaitingTokenByPhone(
+      supabase,
+      clinic.id,
+      patientPhone,
+    );
+    if (recovered) {
+      return { entry: recovered, existing: true };
+    }
+  }
+
+  if (rpcError) {
+    throw new Error(rpcError.message ?? "Failed to create queue entry.");
+  }
+
+  return createQueueEntryLegacy(supabase, clinic, {
+    patientPhone: patientPhone ?? undefined,
+    patientName: patientName ?? undefined,
+    requestedAtMs,
+  });
 }
 
 async function createQueueEntryLegacy(
@@ -53,8 +156,23 @@ async function createQueueEntryLegacy(
   options: {
     patientPhone?: string;
     patientName?: string;
+    requestedAtMs: number;
   },
-): Promise<Token> {
+): Promise<CreateQueueEntryResult> {
+  const patientPhone = normalizeQueuePatientPhone(options.patientPhone);
+  const patientName = options.patientName?.trim() || null;
+
+  if (patientPhone) {
+    const preExisting = await findWaitingTokenByPhone(
+      supabase,
+      clinic.id,
+      patientPhone,
+    );
+    if (preExisting) {
+      return { entry: preExisting, existing: true };
+    }
+  }
+
   const { data: lastEntry } = await supabase
     .from("tokens")
     .select("token_number")
@@ -84,19 +202,41 @@ async function createQueueEntryLegacy(
       token_number: nextToken,
       queue_position: queuePosition,
       status: "waiting",
-      patient_phone: options.patientPhone ?? null,
-      patient_name: options.patientName ?? null,
+      patient_phone: patientPhone,
+      patient_name: patientName,
       is_emergency: false,
       estimated_call_at: estimatedCallAt,
     })
     .select()
     .single();
 
-  if (error || !entry) {
-    throw new Error(error?.message ?? "Failed to create queue entry.");
+  if (error) {
+    if (isUniqueViolationError(error) && patientPhone) {
+      const recovered = await findWaitingTokenByPhone(
+        supabase,
+        clinic.id,
+        patientPhone,
+      );
+      if (recovered) {
+        return { entry: recovered, existing: true };
+      }
+    }
+
+    throw new Error(error.message ?? "Failed to create queue entry.");
   }
 
-  return entry as Token;
+  if (!entry) {
+    throw new Error("Failed to create queue entry.");
+  }
+
+  return {
+    entry: entry as Token,
+    existing: isExistingQueueEntry(
+      entry as Token,
+      options.requestedAtMs,
+      null,
+    ),
+  };
 }
 
 export async function shiftTokenLate(
