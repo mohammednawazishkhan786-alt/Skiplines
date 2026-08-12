@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertTriangle,
   BellRing,
   CreditCard,
   Loader2,
@@ -45,7 +44,6 @@ function DashboardContent() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [calling, setCalling] = useState(false);
-  const [emergencyId, setEmergencyId] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -292,41 +290,6 @@ function DashboardContent() {
       );
     } finally {
       setCalling(false);
-    }
-  }
-
-  async function handleEmergency(entryId: string) {
-    if (!clinicId) return;
-
-    setEmergencyId(entryId);
-    setMessage(null);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/clinics/${clinicId}/emergency`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ entry_id: entryId }),
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Emergency override failed.");
-      }
-
-      setMessage(
-        `Emergency priority set for token #${payload.entry.token_number}. Waiting patients notified.`,
-      );
-      await loadDashboard();
-    } catch (emergencyError) {
-      setError(
-        emergencyError instanceof Error
-          ? emergencyError.message
-          : "Emergency override failed.",
-      );
-    } finally {
-      setEmergencyId(null);
     }
   }
 
@@ -619,48 +582,22 @@ function DashboardContent() {
             {waiting.map((entry) => (
               <li
                 key={entry.id}
-                className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
-                  entry.is_emergency
-                    ? "border-red-300 bg-red-50"
-                    : "border-teal-100 bg-teal-50"
-                }`}
+                className="flex items-center justify-between rounded-xl border border-teal-100 bg-teal-50 px-4 py-3"
               >
                 <div>
                   <span className="font-semibold text-teal-900">
                     #{entry.token_number}
                   </span>
-                  {entry.is_emergency ? (
-                    <span className="ml-2 text-xs font-medium uppercase text-red-600">
-                      Emergency
-                    </span>
-                  ) : null}
                   {entry.patient_phone ? (
                     <p className="text-xs text-teal-700">{entry.patient_phone}</p>
                   ) : null}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/live/${entry.id}`}
-                    className="rounded-lg border border-teal-200 px-3 py-1.5 text-xs font-medium text-teal-800 hover:bg-white"
-                  >
-                    Live
-                  </Link>
-                  {!entry.is_emergency ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleEmergency(entry.id)}
-                      disabled={emergencyId === entry.id}
-                      className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 disabled:opacity-60"
-                    >
-                      {emergencyId === entry.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <AlertTriangle className="h-3 w-3" />
-                      )}
-                      Emergency
-                    </button>
-                  ) : null}
-                </div>
+                <Link
+                  href={`/live/${entry.id}`}
+                  className="rounded-lg border border-teal-200 px-3 py-1.5 text-xs font-medium text-teal-800 hover:bg-white"
+                >
+                  Live
+                </Link>
               </li>
             ))}
           </ul>

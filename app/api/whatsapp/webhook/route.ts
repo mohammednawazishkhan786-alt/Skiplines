@@ -101,42 +101,20 @@ export const POST = withSentryApiRoute(
             }
 
             if (upper.startsWith("TOKEN") || upper.startsWith("JOIN")) {
-              const isEmergency = upper.includes("EMERGENCY");
               const queueEntry = await createQueueEntry(
                 supabase,
                 clinic as Clinic,
-                { patientPhone, isEmergency },
+                { patientPhone },
               );
 
-              const reply = isEmergency
-                ? `🚨 Emergency token #${queueEntry.token_number} issued. You are prioritized. Track live: ${appUrl}/live/${queueEntry.id}`
-                : `✅ Token #${queueEntry.token_number} issued for ${clinic.clinic_name}. Track your wait live: ${appUrl}/live/${queueEntry.id}`;
+              const reply = `✅ Token #${queueEntry.token_number} issued for ${clinic.clinic_name}. Track your wait live: ${appUrl}/live/${queueEntry.id}`;
 
               await sendWhatsAppMessage(patientPhone, reply);
               await logNotification(
                 clinicId,
                 queueEntry.id,
                 patientPhone,
-                isEmergency ? "emergency_token" : "token_issued",
-                reply,
-              );
-              continue;
-            }
-
-            if (upper.includes("EMERGENCY")) {
-              const queueEntry = await createQueueEntry(
-                supabase,
-                clinic as Clinic,
-                { patientPhone, isEmergency: true },
-              );
-
-              const reply = `🚨 Emergency token #${queueEntry.token_number} issued. Track live: ${appUrl}/live/${queueEntry.id}`;
-              await sendWhatsAppMessage(patientPhone, reply);
-              await logNotification(
-                clinicId,
-                queueEntry.id,
-                patientPhone,
-                "emergency_token",
+                "token_issued",
                 reply,
               );
               continue;

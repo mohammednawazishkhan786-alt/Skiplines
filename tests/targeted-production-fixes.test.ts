@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import {
-  createDoctorToken,
-  verifyDoctorAuth,
-} from "../lib/auth/doctor-token.ts";
 import { buildSubscriptionWebhookEventId } from "../lib/subscription-webhook-id.ts";
 
 const root = join(import.meta.dirname, "..");
@@ -14,56 +10,25 @@ function read(rel: string) {
   return readFileSync(join(root, rel), "utf8");
 }
 
-const CLINIC_A = "adda7e3d-70bb-4c40-8ef9-42740b9f1762";
-const CLINIC_B = "9376eb65-e3e9-4142-a54b-a6f4c0d449ad";
-
-function withDoctorSecret<T>(fn: () => T) {
-  const previous = process.env.DOCTOR_AUTH_SECRET;
-  process.env.DOCTOR_AUTH_SECRET = "test_doctor_auth_secret_for_unit_tests_32";
-  try {
-    return fn();
-  } finally {
-    process.env.DOCTOR_AUTH_SECRET = previous;
-  }
-}
-
 describe("targeted production fixes", () => {
-  describe("patient queue emergency auth", () => {
-    it("requires doctor subscription guard in queue emergency route", () => {
-      const route = read("app/api/queue/[tokenId]/emergency/route.ts");
-      assert.match(route, /requireDoctorSubscription/);
-      assert.doesNotMatch(route, /getSubscriptionAccessError/);
-    });
-
-    it("rejects unauthenticated doctor access", () => {
-      withDoctorSecret(() => {
-        const request = new Request(
-          "https://www.skiplines.in/api/queue/token/emergency",
-        );
-        assert.equal(verifyDoctorAuth(request, CLINIC_A), false);
-      });
-    });
-
-    it("rejects wrong-clinic doctor access", () => {
-      withDoctorSecret(() => {
-        const token = createDoctorToken(CLINIC_A);
-        const request = new Request(
-          "https://www.skiplines.in/api/queue/token/emergency",
-          {
-            headers: { cookie: `doctor_token=${encodeURIComponent(token)}` },
-          },
-        );
-        assert.equal(verifyDoctorAuth(request, CLINIC_B), false);
-        assert.equal(verifyDoctorAuth(request, CLINIC_A), true);
-      });
+  describe("emergency feature removed", () => {
+    it("does not expose patient or doctor emergency API routes", () => {
+      assert.equal(
+        existsSync(join(root, "app/api/queue/[tokenId]/emergency/route.ts")),
+        false,
+      );
+      assert.equal(
+        existsSync(join(root, "app/api/clinics/[id]/emergency/route.ts")),
+        false,
+      );
     });
   });
 
-  describe("public join emergency flag", () => {
-    it("forces isEmergency false and ignores client is_emergency", () => {
+  describe("public join has no emergency input", () => {
+    it("does not read or pass emergency flags", () => {
       const route = read("app/api/clinics/[id]/join/route.ts");
-      assert.match(route, /isEmergency:\s*false/);
-      assert.doesNotMatch(route, /body\.is_emergency/);
+      assert.doesNotMatch(route, /is_emergency/);
+      assert.doesNotMatch(route, /isEmergency/);
     });
   });
 

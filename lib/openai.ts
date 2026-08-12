@@ -32,7 +32,6 @@ Clinic consultation fee: ₹${clinic.consultation_fee}
 Clinic hours: ${clinic.clinic_hours}
 Average wait per patient: ${clinic.avg_time_per_patient} minutes.
 To get a queue token, patients should send: TOKEN
-For emergencies, they can reply: EMERGENCY
 If asked about location or directions, say to contact the clinic at ${clinic.phone}.
 Keep replies under 3 sentences. Use Indian English.`;
 

@@ -2,13 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import {
-  AlertTriangle,
-  Clock,
-  Loader2,
-  RefreshCw,
-  Ticket,
-} from "lucide-react";
+import { Clock, Loader2, RefreshCw, Ticket } from "lucide-react";
 import type { Clinic, QueueEntry } from "@/lib/types";
 
 type LiveData = {
@@ -25,7 +19,6 @@ export default function LiveTrackerPage() {
   const [data, setData] = useState<LiveData | null>(null);
   const [loading, setLoading] = useState(true);
   const [shifting, setShifting] = useState(false);
-  const [emergencyLoading, setEmergencyLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,36 +103,6 @@ export default function LiveTrackerPage() {
     }
   }
 
-  async function handleEmergency() {
-    if (!data) return;
-    setEmergencyLoading(true);
-    setMessage(null);
-    setError(null);
-
-    try {
-      const response = await fetch(
-        `/api/queue/${tokenId}/emergency`,
-        { method: "POST" },
-      );
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Emergency request failed.");
-      }
-
-      setMessage("Emergency priority activated. You are next in line.");
-      await loadData();
-    } catch (emergencyError) {
-      setError(
-        emergencyError instanceof Error
-          ? emergencyError.message
-          : "Emergency request failed.",
-      );
-    } finally {
-      setEmergencyLoading(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-teal-50 text-teal-700">
@@ -184,7 +147,6 @@ export default function LiveTrackerPage() {
             label="Your Token"
             value={`#${entry.token_number}`}
             icon={<Ticket className="h-5 w-5" />}
-            emergency={entry.is_emergency}
           />
         </div>
 
@@ -202,35 +164,19 @@ export default function LiveTrackerPage() {
         />
 
         {entry.status === "waiting" ? (
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => void handleLateShift()}
-              disabled={shifting}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-6 py-4 font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-            >
-              {shifting ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Clock className="h-5 w-5" />
-              )}
-              I am 10 Mins Late
-            </button>
-
-            <button
-              type="button"
-              onClick={() => void handleEmergency()}
-              disabled={emergencyLoading || entry.is_emergency}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-6 py-4 font-semibold text-white hover:bg-red-500 disabled:opacity-60"
-            >
-              {emergencyLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <AlertTriangle className="h-5 w-5" />
-              )}
-              Emergency Priority
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void handleLateShift()}
+            disabled={shifting}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-6 py-4 font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+          >
+            {shifting ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Clock className="h-5 w-5" />
+            )}
+            I am 10 Mins Late
+          </button>
         ) : null}
 
         <button
@@ -270,14 +216,12 @@ function TrackerCard({
   value,
   icon,
   highlight,
-  emergency,
   fullWidth,
 }: {
   label: string;
   value: string;
   icon: React.ReactNode;
   highlight?: boolean;
-  emergency?: boolean;
   fullWidth?: boolean;
 }) {
   return (
@@ -287,9 +231,7 @@ function TrackerCard({
       } ${
         highlight
           ? "border-teal-300 bg-teal-700 text-white"
-          : emergency
-            ? "border-red-300 bg-red-50"
-            : "border-teal-200 bg-white"
+          : "border-teal-200 bg-white"
       }`}
     >
       <div

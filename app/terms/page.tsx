@@ -78,8 +78,7 @@ export default function TermsPage() {
             messaging via WhatsApp.
           </li>
           <li>
-            Clinics may call patients in queue order, including emergency
-            priority overrides, at their discretion.
+            Clinics may call patients in queue order at their discretion.
           </li>
           <li>
             Skiplines is not liable for delays, no-shows, or disputes between

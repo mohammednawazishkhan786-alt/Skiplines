@@ -37,7 +37,6 @@ export const POST = withSentryApiRoute(
       const body = await request.json();
       patientPhoneRaw = String(body.patient_phone ?? "");
       patientNameRaw = String(body.patient_name ?? "");
-      // Public joins must never accept client-supplied emergency priority.
     } catch {
       return NextResponse.json(
         { error: "Request body with patient_name and patient_phone is required." },
@@ -75,7 +74,6 @@ export const POST = withSentryApiRoute(
       const entry = await createQueueEntry(supabase, clinic, {
         patientPhone,
         patientName,
-        isEmergency: false,
       });
 
       return NextResponse.json({ entry: toPublicToken(entry) }, { status: 201 });

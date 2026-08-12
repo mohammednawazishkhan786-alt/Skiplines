@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getPublicAppUrl } from "@/lib/env";
 import type { Clinic, Token } from "@/lib/types";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { getPublicAppUrl } from "@/lib/env";
 
 export async function getNextQueuePosition(
   supabase: SupabaseClient,
@@ -25,7 +25,6 @@ export async function createQueueEntry(
   options: {
     patientPhone?: string;
     patientName?: string;
-    isEmergency?: boolean;
   } = {},
 ): Promise<Token> {
   // Prefer DB-atomic RPC (advisory lock) when migration 017 is applied.
@@ -35,7 +34,7 @@ export async function createQueueEntry(
       p_clinic_id: clinic.id,
       p_patient_name: options.patientName ?? null,
       p_patient_phone: options.patientPhone ?? null,
-      p_is_emergency: options.isEmergency ?? false,
+      p_is_emergency: false,
       p_avg_time_per_patient: clinic.avg_time_per_patient,
     },
   );
@@ -54,7 +53,6 @@ async function createQueueEntryLegacy(
   options: {
     patientPhone?: string;
     patientName?: string;
-    isEmergency?: boolean;
   },
 ): Promise<Token> {
   const { data: lastEntry } = await supabase
@@ -66,28 +64,7 @@ async function createQueueEntryLegacy(
     .maybeSingle();
 
   const nextToken = (lastEntry?.token_number ?? 0) + 1;
-  let queuePosition = await getNextQueuePosition(supabase, clinic.id);
-
-  if (options.isEmergency) {
-    const { data: waiting } = await supabase
-      .from("tokens")
-      .select("id, queue_position")
-      .eq("clinic_id", clinic.id)
-      .eq("status", "waiting")
-      .order("queue_position", { ascending: true });
-
-    if (waiting && waiting.length > 0) {
-      queuePosition = waiting[0].queue_position;
-      for (const entry of waiting) {
-        await supabase
-          .from("tokens")
-          .update({ queue_position: entry.queue_position + 1 })
-          .eq("id", entry.id);
-      }
-    } else {
-      queuePosition = 1;
-    }
-  }
+  const queuePosition = await getNextQueuePosition(supabase, clinic.id);
 
   const { count: waitingAhead } = await supabase
     .from("tokens")
@@ -109,7 +86,7 @@ async function createQueueEntryLegacy(
       status: "waiting",
       patient_phone: options.patientPhone ?? null,
       patient_name: options.patientName ?? null,
-      is_emergency: options.isEmergency ?? false,
+      is_emergency: false,
       estimated_call_at: estimatedCallAt,
     })
     .select()
@@ -187,72 +164,6 @@ export async function shiftTokenLate(
 
   if (updateError || !updated) {
     throw new Error(updateError?.message ?? "Failed to shift token.");
-  }
-
-  return updated as Token;
-}
-
-export async function promoteEmergencyToken(
-  supabase: SupabaseClient,
-  clinicId: string,
-  entryId: string,
-): Promise<Token> {
-  const { data: entry } = await supabase
-    .from("tokens")
-    .select("*")
-    .eq("id", entryId)
-    .eq("clinic_id", clinicId)
-    .single();
-
-  if (!entry) {
-    throw new Error("Token not found.");
-  }
-
-  const { data: waiting } = await supabase
-    .from("tokens")
-    .select("id, queue_position, patient_phone")
-    .eq("clinic_id", clinicId)
-    .eq("status", "waiting")
-    .order("queue_position", { ascending: true });
-
-  if (!waiting || waiting.length === 0) {
-    throw new Error("No waiting patients.");
-  }
-
-  const minPosition = waiting[0].queue_position;
-
-  for (const item of waiting) {
-    if (item.id !== entryId) {
-      await supabase
-        .from("tokens")
-        .update({ queue_position: item.queue_position + 1 })
-        .eq("id", item.id);
-    }
-  }
-
-  const { data: updated, error } = await supabase
-    .from("tokens")
-    .update({
-      is_emergency: true,
-      queue_position: minPosition,
-      estimated_call_at: new Date().toISOString(),
-    })
-    .eq("id", entryId)
-    .select()
-    .single();
-
-  if (error || !updated) {
-    throw new Error(error?.message ?? "Emergency promotion failed.");
-  }
-
-  const appUrl = getPublicAppUrl();
-
-  for (const item of waiting) {
-    if (item.id === entryId || !item.patient_phone) continue;
-
-    const message = `⚠️ Queue update at your clinic: An emergency case has been prioritized. Your wait may be slightly longer. Track live: ${appUrl}/live/${item.id}`;
-    await sendWhatsAppMessage(item.patient_phone, message);
-    await logNotification(clinicId, item.id, item.patient_phone, "emergency_shift", message);
   }
 
   return updated as Token;

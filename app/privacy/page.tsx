@@ -54,7 +54,7 @@ export default function PrivacyPage() {
               <li>
                 <strong>Queue and patient data:</strong> token numbers, queue
                 position, status (waiting, called, completed), optional patient
-                name and phone number, emergency and late flags, and estimated
+                name and phone number, late flags, and estimated
                 call times.
               </li>
               <li>
