@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Data Deletion Instructions",
   description:
     "How to request deletion of your personal data from Skiplines, including WhatsApp and queue data.",
+  alternates: { canonical: "/data-deletion" },
 };
 
 const LAST_UPDATED = "August 9, 2026";

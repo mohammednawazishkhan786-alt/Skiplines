@@ -17,10 +17,16 @@ function read(rel: string) {
 
 describe("E2E product wiring (static journey checks)", () => {
   it("join UI collects patient name and phone", () => {
-    const joinPage = read("app/join/[clinicId]/page.tsx");
+    const joinPage = read("app/join/[clinicId]/join-form.tsx");
     assert.match(joinPage, /patient_name/);
     assert.match(joinPage, /patient_phone/);
     assert.match(joinPage, /isValidIndianMobile/);
+  });
+
+  it("join page returns notFound for missing clinics", () => {
+    const joinPage = read("app/join/[clinicId]/page.tsx");
+    assert.match(joinPage, /notFound\(\)/);
+    assert.match(joinPage, /getPublicClinicOrThrow/);
   });
 
   it("clinic booking UI collects patient name and phone", () => {

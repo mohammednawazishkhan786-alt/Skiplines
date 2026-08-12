@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Refund & Cancellation Policy",
   description:
     "Refund and cancellation terms for Skiplines OPD token and subscription services.",
+  alternates: { canonical: "/refund-policy" },
 };
 
 const LAST_UPDATED = "August 9, 2026";
@@ -52,10 +53,6 @@ export default function RefundPolicyPage() {
             <strong>No-show patients:</strong> Clinics may mark no-show patients
             as completed without refund of any consultation fee collected
             offline at the clinic.
-          </li>
-          <li>
-            <strong>Emergency tokens:</strong> Emergency-priority tokens follow
-            the same cancellation rules but may be expedited by the clinic.
           </li>
         </ul>
         <p className="mt-3">

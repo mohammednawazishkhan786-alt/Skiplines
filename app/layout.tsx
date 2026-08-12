@@ -27,9 +27,6 @@ export const metadata: Metadata = {
   },
   description: siteDescription,
   applicationName: "Skiplines",
-  alternates: {
-    canonical: "/",
-  },
   openGraph: {
     type: "website",
     locale: "en_IN",

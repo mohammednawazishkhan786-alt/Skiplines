@@ -89,6 +89,13 @@ describe("emergency feature removal", () => {
     });
   });
 
+  describe("legal copy", () => {
+    it("does not mention emergency tokens in refund policy", () => {
+      const page = read("app/refund-policy/page.tsx");
+      assert.doesNotMatch(page, /emergency/i);
+    });
+  });
+
   describe("normal queue flows preserved", () => {
     it("keeps public join route", () => {
       assert.equal(pathExists("app/api/clinics/[id]/join/route.ts"), true);

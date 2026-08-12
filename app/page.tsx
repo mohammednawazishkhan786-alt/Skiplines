@@ -8,6 +8,7 @@ import { CANONICAL_PRODUCTION_SITE_URL } from "@/lib/env";
 export const metadata: Metadata = {
   title: { absolute: "Skiplines — Skip the Wait" },
   description: "Digital queue management for clinics and doctors.",
+  alternates: { canonical: "/" },
 };
 
 const softwareJsonLd = {

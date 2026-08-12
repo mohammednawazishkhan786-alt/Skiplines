@@ -5,10 +5,9 @@ import { isAuthorizedJobRequest } from "@/lib/auth/cron";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
-export const POST = withSentryApiRoute(
-  "POST",
-  "/api/jobs/confirmations",
-  async function POST(request: Request) {
+export const dynamic = "force-dynamic";
+
+async function handleConfirmations(request: Request) {
   if (!isAuthorizedJobRequest(request)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -57,5 +56,16 @@ export const POST = withSentryApiRoute(
   }
 
   return NextResponse.json({ sent, total: entries?.length ?? 0 });
-},
+}
+
+export const POST = withSentryApiRoute(
+  "POST",
+  "/api/jobs/confirmations",
+  handleConfirmations,
+);
+
+export const GET = withSentryApiRoute(
+  "GET",
+  "/api/jobs/confirmations",
+  handleConfirmations,
 );

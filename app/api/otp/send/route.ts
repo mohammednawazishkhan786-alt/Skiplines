@@ -8,26 +8,8 @@ import {
   OTP_TTL_MS,
 } from "@/lib/otp";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { isDevOtpBypassEnabled } from "@/lib/resend-otp";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
-
-async function findExistingClinicByEmail(emailNormalized: string) {
-  const supabase = createAdminClient();
-
-  const { data, error } = await supabase
-    .from("clinics")
-    .select("id")
-    .ilike("email", emailNormalized)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error("Could not verify email registration status.");
-  }
-
-  return data;
-}
 
 function ensureEmailDeliveryConfigured() {
   if (getResendApiKey() || isDevOtpBypassEnabled()) {
@@ -81,8 +63,6 @@ export const POST = withSentryApiRoute(
         return emailLimited;
       }
 
-      const existingClinic = await findExistingClinicByEmail(emailNormalized);
-      const isLogin = Boolean(existingClinic);
       const otp = generateOtp();
 
       try {
@@ -116,7 +96,6 @@ export const POST = withSentryApiRoute(
         channel: delivery.channel,
         expires_in_seconds: OTP_TTL_MS / 1000,
         dev_otp: delivery.devOtp,
-        login: isLogin,
       });
     } catch (error) {
       captureApiError(error);

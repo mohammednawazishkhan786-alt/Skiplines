@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Terms & Conditions",
   description:
     "Terms and conditions for using Skiplines OPD token and queue management platform.",
+  alternates: { canonical: "/terms" },
 };
 
 const LAST_UPDATED = "August 9, 2026";

@@ -40,6 +40,70 @@ describe("targeted production fixes", () => {
     });
   });
 
+  describe("join page not found", () => {
+    it("uses Next.js notFound for missing clinics on join route", () => {
+      const page = read("app/join/[clinicId]/page.tsx");
+      assert.match(page, /notFound\(\)/);
+      assert.match(page, /getPublicClinicOrThrow/);
+    });
+
+    it("keeps join form in a client component", () => {
+      const form = read("app/join/[clinicId]/join-form.tsx");
+      assert.match(form, /"use client"/);
+      assert.match(form, /Book Token/);
+    });
+  });
+
+  describe("SEO canonical URLs", () => {
+    it("does not set a global homepage canonical in root layout", () => {
+      const layout = read("app/layout.tsx");
+      assert.doesNotMatch(layout, /alternates:\s*\{[^}]*canonical:\s*"\//s);
+    });
+
+    it("sets per-page canonical on indexable public pages", () => {
+      assert.match(read("app/page.tsx"), /canonical:\s*"\//);
+      assert.match(read("app/privacy/page.tsx"), /canonical:\s*"\/privacy"/);
+      assert.match(read("app/terms/page.tsx"), /canonical:\s*"\/terms"/);
+      assert.match(
+        read("app/refund-policy/page.tsx"),
+        /canonical:\s*"\/refund-policy"/,
+      );
+      assert.match(read("app/contact/page.tsx"), /canonical:\s*"\/contact"/);
+      assert.match(
+        read("app/data-deletion/page.tsx"),
+        /canonical:\s*"\/data-deletion"/,
+      );
+    });
+
+    it("does not set canonical on private noindex layouts", () => {
+      assert.doesNotMatch(read("app/login/layout.tsx"), /canonical/);
+      assert.doesNotMatch(read("app/dashboard/layout.tsx"), /canonical/);
+      assert.doesNotMatch(read("app/join/layout.tsx"), /canonical/);
+    });
+  });
+
+  describe("vercel cron compatibility", () => {
+    it("exposes GET handlers for scheduled job routes", () => {
+      for (const route of [
+        "app/api/jobs/confirmations/route.ts",
+        "app/api/jobs/reconcile-subscriptions/route.ts",
+        "app/api/reviews/send/route.ts",
+      ]) {
+        const source = read(route);
+        assert.match(source, /export const GET = /);
+        assert.match(source, /export const POST = /);
+      }
+    });
+  });
+
+  describe("OTP send privacy", () => {
+    it("does not leak whether an email is already registered", () => {
+      const route = read("app/api/otp/send/route.ts");
+      assert.doesNotMatch(route, /login:\s*isLogin/);
+      assert.doesNotMatch(route, /findExistingClinicByEmail/);
+    });
+  });
+
   describe("subscription webhook idempotency", () => {
     it("builds stable event ids for identical webhook bodies", () => {
       const body = JSON.stringify({ type: "SUBSCRIPTION_CHARGED", data: {} });

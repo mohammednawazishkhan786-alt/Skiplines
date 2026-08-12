@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Contact Us",
   description:
     "Contact Skiplines customer support for OPD token and queue management help.",
+  alternates: { canonical: "/contact" },
 };
 
 const LAST_UPDATED = "August 9, 2026";

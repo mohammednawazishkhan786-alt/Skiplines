@@ -4,10 +4,9 @@ import { isAuthorizedJobRequest } from "@/lib/auth/cron";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 
-export const POST = withSentryApiRoute(
-  "POST",
-  "/api/reviews/send",
-  async function POST(request: Request) {
+export const dynamic = "force-dynamic";
+
+async function handleReviewSend(request: Request) {
   if (!isAuthorizedJobRequest(request)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -40,7 +39,6 @@ export const POST = withSentryApiRoute(
 
     const reviewUrl = clinic?.google_review_link?.trim();
     if (!reviewUrl) {
-      // No clinic-configured review URL — skip silently (do not invent placeholders).
       continue;
     }
 
@@ -66,5 +64,16 @@ export const POST = withSentryApiRoute(
   }
 
   return NextResponse.json({ sent, total: entries?.length ?? 0 });
-},
+}
+
+export const POST = withSentryApiRoute(
+  "POST",
+  "/api/reviews/send",
+  handleReviewSend,
+);
+
+export const GET = withSentryApiRoute(
+  "GET",
+  "/api/reviews/send",
+  handleReviewSend,
 );

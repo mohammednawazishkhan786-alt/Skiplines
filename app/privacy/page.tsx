@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
     "How Skiplines collects, uses, and protects clinic and patient data, including WhatsApp integration.",
+  alternates: { canonical: "/privacy" },
 };
 
 const LAST_UPDATED = "August 9, 2026";
