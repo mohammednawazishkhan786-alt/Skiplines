@@ -29,6 +29,7 @@ import {
   isTrialActive,
   shouldSkipCashfreePaymentFlow,
 } from "@/lib/subscription";
+import { maskPhoneForDoctorDisplay } from "@/lib/phone";
 import type { Clinic, QueueEntry } from "@/lib/types";
 
 type DashboardData = {
@@ -540,6 +541,17 @@ function DashboardContent() {
         />
       </div>
 
+      {currentlyServing ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-900">
+            Now Serving Patient
+          </h2>
+          <div className="mt-3">
+            <DoctorPatientIdentity entry={currentlyServing} />
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-2xl border border-teal-200 bg-white p-8 shadow-sm">
         <button
           type="button"
@@ -582,19 +594,12 @@ function DashboardContent() {
             {waiting.map((entry) => (
               <li
                 key={entry.id}
-                className="flex items-center justify-between rounded-xl border border-teal-100 bg-teal-50 px-4 py-3"
+                className="flex items-center justify-between gap-4 rounded-xl border border-teal-100 bg-teal-50 px-4 py-3"
               >
-                <div>
-                  <span className="font-semibold text-teal-900">
-                    #{entry.token_number}
-                  </span>
-                  {entry.patient_phone ? (
-                    <p className="text-xs text-teal-700">{entry.patient_phone}</p>
-                  ) : null}
-                </div>
+                <DoctorPatientIdentity entry={entry} />
                 <Link
                   href={`/live/${entry.id}`}
-                  className="rounded-lg border border-teal-200 px-3 py-1.5 text-xs font-medium text-teal-800 hover:bg-white"
+                  className="shrink-0 rounded-lg border border-teal-200 px-3 py-1.5 text-xs font-medium text-teal-800 hover:bg-white"
                 >
                   Live
                 </Link>
@@ -605,6 +610,26 @@ function DashboardContent() {
       </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+function DoctorPatientIdentity({ entry }: { entry: QueueEntry }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-base font-bold tracking-wide text-teal-950">
+        TOKEN #{entry.token_number}
+      </p>
+      <p className="text-sm text-teal-900">
+        <span className="font-medium text-teal-800/75">Name:</span>{" "}
+        {entry.patient_name?.trim() || "—"}
+      </p>
+      <p className="text-sm text-teal-900">
+        <span className="font-medium text-teal-800/75">Mobile:</span>{" "}
+        {entry.patient_phone
+          ? maskPhoneForDoctorDisplay(entry.patient_phone)
+          : "—"}
+      </p>
     </div>
   );
 }

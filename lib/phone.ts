@@ -33,5 +33,14 @@ export function formatIndianMobileDisplay(phone: string): string {
   return `+91 ${normalized.slice(0, 5)} ${normalized.slice(5)}`;
 }
 
+/** Doctor dashboard only — masks all but the last 4 digits. */
+export function maskPhoneForDoctorDisplay(phone: string): string {
+  const normalized = normalizePhone(phone);
+  if (!/^\d{10}$/.test(normalized)) {
+    return "—";
+  }
+  return `******${normalized.slice(-4)}`;
+}
+
 export const INVALID_PHONE_MESSAGE =
   "Enter a valid 10-digit Indian WhatsApp / mobile number.";

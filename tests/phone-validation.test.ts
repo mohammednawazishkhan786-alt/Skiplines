@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   INVALID_PHONE_MESSAGE,
   isValidIndianMobile,
+  maskPhoneForDoctorDisplay,
   normalizePhone,
 } from "../lib/phone.ts";
 
@@ -27,5 +28,11 @@ describe("Indian mobile validation", () => {
 
   it("exports a user-facing error message", () => {
     assert.match(INVALID_PHONE_MESSAGE, /10-digit/i);
+  });
+
+  it("masks doctor-dashboard phone numbers to last four digits", () => {
+    assert.equal(maskPhoneForDoctorDisplay("9876543210"), "******3210");
+    assert.equal(maskPhoneForDoctorDisplay("+91 98765 43210"), "******3210");
+    assert.equal(maskPhoneForDoctorDisplay(""), "—");
   });
 });
