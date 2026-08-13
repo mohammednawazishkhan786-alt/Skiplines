@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
   buildCanonicalRedirectUrl,
+  isVercelCronJobPath,
+  normalizeCronPathname,
   shouldRedirectToCanonicalHost,
 } from "@/lib/canonical-host";
 
@@ -12,19 +14,27 @@ import {
 export function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
   const method = request.method.toUpperCase();
+  const pathname = request.nextUrl.pathname;
+  const cronPath = normalizeCronPathname(pathname);
+
+  // Vercel Cron may request cron paths with a trailing slash; rewrite internally
+  // instead of following Next.js's 308 trailing-slash redirect.
+  if (cronPath !== pathname && isVercelCronJobPath(cronPath)) {
+    const url = request.nextUrl.clone();
+    url.pathname = cronPath;
+    return NextResponse.rewrite(url);
+  }
 
   if (
-    shouldRedirectToCanonicalHost(host) &&
+    shouldRedirectToCanonicalHost(host, cronPath) &&
     (method === "GET" || method === "HEAD")
   ) {
     const destination = buildCanonicalRedirectUrl(
-      request.nextUrl.pathname,
+      cronPath,
       request.nextUrl.search,
     );
     return NextResponse.redirect(destination, 308);
   }
-
-  const { pathname } = request.nextUrl;
 
   if (
     method === "GET" &&

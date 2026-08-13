@@ -3,6 +3,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { buildSubscriptionWebhookEventId } from "../lib/subscription-webhook-id.ts";
+import {
+  isVercelCronJobPath,
+  shouldRedirectToCanonicalHost,
+} from "../lib/canonical-host.ts";
 
 const root = join(import.meta.dirname, "..");
 
@@ -94,6 +98,98 @@ describe("targeted production fixes", () => {
         assert.match(source, /export const POST = /);
       }
     });
+
+    it("rejects cron requests without CRON_SECRET", () => {
+      const cronAuth = read("lib/auth/cron.ts");
+      assert.match(cronAuth, /CRON_SECRET is not configured/);
+      assert.match(cronAuth, /return false/);
+      for (const route of [
+        "app/api/jobs/confirmations/route.ts",
+        "app/api/jobs/reconcile-subscriptions/route.ts",
+        "app/api/reviews/send/route.ts",
+      ]) {
+        const source = read(route);
+        assert.match(source, /isAuthorizedJobRequest/);
+        assert.match(source, /status: 401/);
+      }
+    });
+
+    it("defines production cron schedules in vercel.json", () => {
+      const vercel = read("vercel.json");
+      assert.match(vercel, /"path": "\/api\/jobs\/confirmations"/);
+      assert.match(vercel, /"path": "\/api\/reviews\/send"/);
+      assert.match(vercel, /"path": "\/api\/jobs\/reconcile-subscriptions"/);
+    });
+
+    it("does not canonical-redirect Vercel cron job API paths", () => {
+      const middlewareSource = read("middleware.ts");
+      assert.match(
+        middlewareSource,
+        /shouldRedirectToCanonicalHost\(host, cronPath\)/,
+      );
+      assert.match(middlewareSource, /NextResponse\.rewrite\(url\)/);
+
+      const previousNodeEnv = process.env.NODE_ENV;
+      const previousVercelEnv = process.env.VERCEL_ENV;
+      process.env.NODE_ENV = "production";
+      process.env.VERCEL_ENV = "production";
+
+      try {
+        assert.equal(
+          isVercelCronJobPath("/api/jobs/reconcile-subscriptions"),
+          true,
+        );
+        assert.equal(
+          isVercelCronJobPath("/api/jobs/reconcile-subscriptions/"),
+          true,
+        );
+        assert.equal(
+          shouldRedirectToCanonicalHost(
+            "skiplines-app.vercel.app",
+            "/api/jobs/reconcile-subscriptions",
+          ),
+          false,
+        );
+        assert.equal(
+          shouldRedirectToCanonicalHost(
+            "skiplines.in",
+            "/api/jobs/reconcile-subscriptions",
+          ),
+          false,
+        );
+        assert.equal(
+          shouldRedirectToCanonicalHost("skiplines-app.vercel.app", "/dashboard"),
+          true,
+        );
+        assert.equal(
+          shouldRedirectToCanonicalHost("skiplines.in", "/dashboard"),
+          true,
+        );
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+        process.env.VERCEL_ENV = previousVercelEnv;
+      }
+    });
+
+    it("does not use next.config host redirects for cron paths", () => {
+      const nextConfig = read("next.config.ts");
+      assert.doesNotMatch(nextConfig, /async redirects\(/);
+      assert.doesNotMatch(nextConfig, /skiplines-app\.vercel\.app/);
+      assert.doesNotMatch(nextConfig, /skiplines\.in/);
+      assert.match(nextConfig, /skipTrailingSlashRedirect:\s*true/);
+    });
+
+    it("rewrites trailing-slash cron paths in vercel.json", () => {
+      const vercel = read("vercel.json");
+      assert.match(
+        vercel,
+        /"source": "\/api\/jobs\/reconcile-subscriptions\/"/,
+      );
+      assert.match(
+        vercel,
+        /"destination": "\/api\/jobs\/reconcile-subscriptions"/,
+      );
+    });
   });
 
   describe("OTP send privacy", () => {
@@ -135,6 +231,19 @@ describe("targeted production fixes", () => {
       assert.match(handler, /verifyCashfreeWebhook/);
       assert.match(handler, /Invalid webhook signature/);
       assert.match(handler, /status: 401/);
+    });
+
+    it("retries PG activation on duplicate webhook delivery", () => {
+      const handler = read("lib/cashfree-webhook-handler.ts");
+      assert.match(handler, /pgActivationResponse\(result, recordResult\.kind === "duplicate"\)/);
+      assert.match(handler, /activateFromWebhookOrder\(orderId\)/);
+    });
+
+    it("returns 500 when PG activation or webhook recording fails", () => {
+      const handler = read("lib/cashfree-webhook-handler.ts");
+      assert.match(handler, /recordWebhookEventDeduped/);
+      assert.match(handler, /status: 500/);
+      assert.match(handler, /pgActivationResponse/);
     });
   });
 

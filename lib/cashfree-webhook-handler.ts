@@ -51,6 +51,40 @@ function normalizeEventType(type: string) {
   return type.trim().toUpperCase().replace(/-/g, "_");
 }
 
+function isPgPaymentSuccessEvent(eventType: string) {
+  return (
+    eventType === "PAYMENT_SUCCESS_WEBHOOK" ||
+    eventType === "PAYMENT_CHARGES_WEBHOOK" ||
+    eventType === "ORDER_PAID"
+  );
+}
+
+async function recordWebhookEventDeduped(
+  input: Parameters<typeof recordWebhookEvent>[0],
+): Promise<{ kind: "new" } | { kind: "duplicate" } | Response> {
+  try {
+    const recorded = await recordWebhookEvent(input);
+    return recorded.duplicate ? { kind: "duplicate" } : { kind: "new" };
+  } catch (error) {
+    captureApiError(error);
+    return Response.json({ status: "error" }, { status: 500 });
+  }
+}
+
+function pgActivationResponse(
+  result: Awaited<ReturnType<typeof activateFromWebhookOrder>>,
+  duplicate: boolean,
+) {
+  if (!result.ok) {
+    return Response.json({ status: result.status }, { status: 500 });
+  }
+
+  return Response.json({
+    status: result.status,
+    ...(duplicate ? { duplicate: true } : {}),
+  });
+}
+
 function extractPgOrderId(payload: PgWebhookPayload) {
   return payload.data?.order?.order_id?.trim() ?? null;
 }
@@ -68,26 +102,18 @@ async function handlePgPaymentWebhook(payload: PgWebhookPayload, eventType: stri
   }
 
   const eventId = `${eventType}:${orderId}`;
-  try {
-    const recorded = await recordWebhookEvent({
-      eventId,
-      eventType,
-      clinicId,
-      providerOrderId: orderId,
-      payload,
-    });
-    if (recorded.duplicate) {
-      return Response.json({ status: "duplicate" });
-    }
-  } catch (error) {
-    captureApiError(error);
+  const recordResult = await recordWebhookEventDeduped({
+    eventId,
+    eventType,
+    clinicId,
+    providerOrderId: orderId,
+    payload,
+  });
+  if (recordResult instanceof Response) {
+    return recordResult;
   }
 
-  if (
-    eventType === "PAYMENT_SUCCESS_WEBHOOK" ||
-    eventType === "PAYMENT_CHARGES_WEBHOOK" ||
-    eventType === "ORDER_PAID"
-  ) {
+  if (isPgPaymentSuccessEvent(eventType)) {
     const paymentStatus = String(
       payload.data?.payment?.payment_status ?? "",
     ).toUpperCase();
@@ -97,7 +123,7 @@ async function handlePgPaymentWebhook(payload: PgWebhookPayload, eventType: stri
     }
 
     const result = await activateFromWebhookOrder(orderId);
-    return Response.json({ status: result.ok ? result.status : result.status });
+    return pgActivationResponse(result, recordResult.kind === "duplicate");
   }
 
   if (
@@ -164,19 +190,18 @@ async function handleSubscriptionWebhook(
     payload.event_id,
   );
 
-  try {
-    const recorded = await recordWebhookEvent({
-      eventId,
-      eventType,
-      clinicId,
-      providerOrderId: subscriptionId,
-      payload,
-    });
-    if (recorded.duplicate) {
-      return Response.json({ status: "duplicate" });
-    }
-  } catch (error) {
-    captureApiError(error);
+  const recordResult = await recordWebhookEventDeduped({
+    eventId,
+    eventType,
+    clinicId,
+    providerOrderId: subscriptionId,
+    payload,
+  });
+  if (recordResult instanceof Response) {
+    return recordResult;
+  }
+  if (recordResult.kind === "duplicate") {
+    return Response.json({ status: "duplicate" });
   }
 
   if (!clinicId) {

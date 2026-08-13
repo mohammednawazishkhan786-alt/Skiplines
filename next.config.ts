@@ -61,38 +61,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  skipTrailingSlashRedirect: true,
   async headers() {
     return [
       {
         source: "/:path*",
         headers: securityHeaders,
-      },
-    ];
-  },
-  async redirects() {
-    return [
-      {
-        source: "/:path*",
-        has: [{ type: "host", value: "skiplines.in" }],
-        destination: "https://www.skiplines.in/:path*",
-        permanent: true,
-      },
-      {
-        source: "/:path*",
-        has: [{ type: "host", value: "skiplines-app.vercel.app" }],
-        destination: "https://www.skiplines.in/:path*",
-        permanent: true,
-      },
-      {
-        source: "/:path*",
-        has: [
-          {
-            type: "host",
-            value: "skiplines-app-nawazish-khans-projects.vercel.app",
-          },
-        ],
-        destination: "https://www.skiplines.in/:path*",
-        permanent: true,
       },
     ];
   },

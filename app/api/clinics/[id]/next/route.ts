@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { getPublicAppUrl } from "@/lib/env";
 import { requireDoctorSubscription } from "@/lib/subscription-guard";
 import { withSentryApiRoute } from "@/lib/sentry-api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { notifyCallNextPatient } from "@/lib/whatsapp-call-next";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -37,17 +36,13 @@ export const POST = withSentryApiRoute(
         patient_phone: string | null;
       };
 
-      const appUrl = getPublicAppUrl();
       if (called.patient_phone) {
-        const message = `🔔 It's your turn! Token #${called.token_number} — please proceed to the doctor's room now. Live tracker: ${appUrl}/live/${called.id}`;
-        await sendWhatsAppMessage(called.patient_phone, message);
-        await logNotification(
-          id,
-          called.id,
-          called.patient_phone,
-          "called",
-          message,
-        );
+        await notifyCallNextPatient({
+          clinicId: id,
+          tokenId: called.id,
+          patientPhone: called.patient_phone,
+          tokenNumber: called.token_number,
+        });
       }
 
       return NextResponse.json({ patient: called });
@@ -120,12 +115,13 @@ export const POST = withSentryApiRoute(
       .update({ current_token: nextPatient.token_number })
       .eq("id", id);
 
-    const appUrl = getPublicAppUrl();
-
     if (called.patient_phone) {
-      const message = `🔔 It's your turn! Token #${called.token_number} — please proceed to the doctor's room now. Live tracker: ${appUrl}/live/${called.id}`;
-      await sendWhatsAppMessage(called.patient_phone, message);
-      await logNotification(id, called.id, called.patient_phone, "called", message);
+      await notifyCallNextPatient({
+        clinicId: id,
+        tokenId: called.id,
+        patientPhone: called.patient_phone,
+        tokenNumber: called.token_number,
+      });
     }
 
     return NextResponse.json({ patient: called });

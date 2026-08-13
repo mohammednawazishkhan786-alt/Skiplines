@@ -58,6 +58,14 @@ export function getWhatsAppAppSecret(): string | undefined {
   return readEnv("WHATSAPP_APP_SECRET");
 }
 
+export function getWhatsAppCallNextTemplate(): string | undefined {
+  return readEnv("WHATSAPP_CALL_NEXT_TEMPLATE");
+}
+
+export function getWhatsAppCallNextTemplateLanguage(): string {
+  return readEnv("WHATSAPP_CALL_NEXT_TEMPLATE_LANGUAGE") ?? "en";
+}
+
 export function hasWhatsAppCredentials(): boolean {
   return Boolean(getWhatsAppToken() && getWhatsAppPhoneNumberId());
 }

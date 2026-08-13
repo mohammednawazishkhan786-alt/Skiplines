@@ -3,6 +3,20 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/api/jobs/confirmations/",
+      "destination": "/api/jobs/confirmations"
+    },
+    {
+      "source": "/api/jobs/reconcile-subscriptions/",
+      "destination": "/api/jobs/reconcile-subscriptions"
+    },
+    {
+      "source": "/api/reviews/send/",
+      "destination": "/api/reviews/send"
+    }
+  ],
   "crons": [
     {
       "path": "/api/jobs/confirmations",
