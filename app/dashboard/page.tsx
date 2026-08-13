@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   BellRing,
+  Check,
+  Copy,
   CreditCard,
   Loader2,
   RefreshCw,
@@ -481,6 +483,7 @@ function DashboardContent() {
               ? `Free trial · ${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} remaining`
               : `Status: ${clinic.subscription_status}`}
         </p>
+        <DoctorIdDisplay doctorId={clinic.id} />
       </div>
 
       {onTrial ? (
@@ -680,6 +683,44 @@ function DoctorPatientIdentity({ entry }: { entry: QueueEntry }) {
           ? maskPhoneForDoctorDisplay(entry.patient_phone)
           : "—"}
       </p>
+    </div>
+  );
+}
+
+function DoctorIdDisplay({ doctorId }: { doctorId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(doctorId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access may be unavailable in some browsers.
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/60 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">
+        Skiplines Doctor ID
+      </p>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="break-all font-mono text-sm text-teal-950">{doctorId}</p>
+        <button
+          type="button"
+          onClick={() => void handleCopy()}
+          aria-label="Copy Skiplines Doctor ID"
+          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-50 sm:w-auto"
+        >
+          {copied ? (
+            <Check className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Copy className="h-4 w-4" aria-hidden="true" />
+          )}
+          {copied ? "Copied" : "Copy ID"}
+        </button>
+      </div>
     </div>
   );
 }
