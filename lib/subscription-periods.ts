@@ -4,6 +4,13 @@ export const SUBSCRIPTION_CURRENCY = "INR";
 export const SUBSCRIPTION_PLAN = "monthly_999";
 
 function isSubscriptionTestMode(): boolean {
+  if (
+    process.env.VERCEL_ENV === "production" ||
+    process.env.NODE_ENV === "production"
+  ) {
+    return false;
+  }
+
   return process.env.SUBSCRIPTION_TEST_MODE?.trim().toLowerCase() === "true";
 }
 

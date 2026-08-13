@@ -1,8 +1,11 @@
 import { Resend } from "resend";
-import { getResendApiKey } from "@/lib/env";
+import {
+  getResendApiKey,
+  isDevOtpBypassEnabled,
+  resolveResendFromEmail,
+} from "@/lib/env";
 
 const RESEND_REQUEST_TIMEOUT_MS = 2_000;
-const RESEND_FROM_EMAIL = "Skiplines <otp@skiplines.in>";
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -25,7 +28,7 @@ async function sendWithResend(email: string, otp: string) {
   const resend = new Resend(apiKey);
 
   const sendPromise = resend.emails.send({
-    from: RESEND_FROM_EMAIL,
+    from: resolveResendFromEmail(),
     to: email,
     subject: `${otp} is your Skiplines verification code`,
     html: `
@@ -50,10 +53,6 @@ async function sendWithResend(email: string, otp: string) {
   }
 
   return { channel: "email" as const };
-}
-
-export function isDevOtpBypassEnabled() {
-  return process.env.OTP_DEV_BYPASS === "true";
 }
 
 export async function sendEmailOtp(email: string, otp: string) {

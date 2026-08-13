@@ -4,8 +4,38 @@ function readEnv(name: string): string | undefined {
   return value;
 }
 
-function isSubscriptionTestModeEnv(): boolean {
+/** True on Vercel Production and other NODE_ENV=production runtimes. */
+export function isProductionRuntime(): boolean {
+  return (
+    process.env.VERCEL_ENV === "production" ||
+    process.env.NODE_ENV === "production"
+  );
+}
+
+/**
+ * Dev-only OTP console fallback. Ignored on production even if the env var is set.
+ */
+export function isDevOtpBypassEnabled(): boolean {
+  if (isProductionRuntime()) {
+    return false;
+  }
+
+  return readEnv("OTP_DEV_BYPASS")?.toLowerCase() === "true";
+}
+
+/**
+ * Shortened trial/subscription for local E2E. Ignored on production even if set.
+ */
+export function isSubscriptionTestModeEnabled(): boolean {
+  if (isProductionRuntime()) {
+    return false;
+  }
+
   return readEnv("SUBSCRIPTION_TEST_MODE")?.toLowerCase() === "true";
+}
+
+function isSubscriptionTestModeEnv(): boolean {
+  return isSubscriptionTestModeEnabled();
 }
 
 export function getOpenAIApiKey(): string | undefined {
@@ -42,6 +72,12 @@ export function getResendApiKey(): string | undefined {
 
 export function getResendFromEmail(): string | undefined {
   return readEnv("RESEND_FROM_EMAIL");
+}
+
+const DEFAULT_RESEND_FROM_EMAIL = "Skiplines <otp@skiplines.in>";
+
+export function resolveResendFromEmail(): string {
+  return getResendFromEmail() ?? DEFAULT_RESEND_FROM_EMAIL;
 }
 
 export function getCashfreeAppId(): string | undefined {

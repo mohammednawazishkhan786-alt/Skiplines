@@ -42,5 +42,16 @@ export function maskPhoneForDoctorDisplay(phone: string): string {
   return `******${normalized.slice(-4)}`;
 }
 
+/** Canonical 10-digit variants used when matching waiting tokens across channels. */
+export function queuePatientPhoneLookupVariants(phone: string): string[] {
+  const normalized = normalizePhone(phone);
+  if (!/^\d{10}$/.test(normalized)) {
+    const trimmed = phone.trim();
+    return trimmed ? [trimmed] : [];
+  }
+
+  return [normalized, `91${normalized}`];
+}
+
 export const INVALID_PHONE_MESSAGE =
   "Enter a valid 10-digit Indian WhatsApp / mobile number.";

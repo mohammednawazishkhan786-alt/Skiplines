@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Clinic, Token } from "@/lib/types";
 import { isUniqueViolationError } from "@/lib/clinic-registration";
-import { normalizePhone } from "@/lib/phone";
+import {
+  normalizePhone,
+  queuePatientPhoneLookupVariants,
+} from "@/lib/phone";
 import { logNotification, sendWhatsAppMessage } from "@/lib/whatsapp";
 import { getPublicAppUrl } from "@/lib/env";
 
@@ -42,12 +45,17 @@ export async function findWaitingTokenByPhone(
   clinicId: string,
   patientPhone: string,
 ): Promise<Token | null> {
+  const lookupPhones = queuePatientPhoneLookupVariants(patientPhone);
+  if (lookupPhones.length === 0) {
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("tokens")
     .select("*")
     .eq("clinic_id", clinicId)
-    .eq("patient_phone", patientPhone)
     .eq("status", "waiting")
+    .in("patient_phone", lookupPhones)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();

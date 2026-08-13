@@ -20,6 +20,12 @@ import {
   extendMonthlyPeriod,
 } from "../lib/subscription-periods.ts";
 import { createAdminClient } from "../lib/supabase/admin.ts";
+import {
+  isDevOtpBypassEnabled,
+  isProductionRuntime,
+  isSubscriptionTestModeEnabled,
+  resolveResendFromEmail,
+} from "../lib/env.ts";
 
 describe("production hardening", () => {
   it("requires service role key in production for admin client", () => {
@@ -93,6 +99,63 @@ describe("production hardening", () => {
 
   it("uses ₹999 production subscription amount", () => {
     assert.equal(SUBSCRIPTION_AMOUNT_INR, 999);
+  });
+
+  it("ignores OTP_DEV_BYPASS and SUBSCRIPTION_TEST_MODE on production runtime", () => {
+    const previousNode = process.env.NODE_ENV;
+    const previousVercel = process.env.VERCEL_ENV;
+    const previousOtpBypass = process.env.OTP_DEV_BYPASS;
+    const previousSubTest = process.env.SUBSCRIPTION_TEST_MODE;
+
+    process.env.NODE_ENV = "production";
+    process.env.VERCEL_ENV = "production";
+    process.env.OTP_DEV_BYPASS = "true";
+    process.env.SUBSCRIPTION_TEST_MODE = "true";
+
+    try {
+      assert.equal(isProductionRuntime(), true);
+      assert.equal(isDevOtpBypassEnabled(), false);
+      assert.equal(isSubscriptionTestModeEnabled(), false);
+    } finally {
+      process.env.NODE_ENV = previousNode;
+      process.env.VERCEL_ENV = previousVercel;
+      process.env.OTP_DEV_BYPASS = previousOtpBypass;
+      process.env.SUBSCRIPTION_TEST_MODE = previousSubTest;
+    }
+  });
+
+  it("allows dev bypass flags only outside production runtime", () => {
+    const previousNode = process.env.NODE_ENV;
+    const previousVercel = process.env.VERCEL_ENV;
+    const previousOtpBypass = process.env.OTP_DEV_BYPASS;
+    const previousSubTest = process.env.SUBSCRIPTION_TEST_MODE;
+
+    process.env.NODE_ENV = "development";
+    delete process.env.VERCEL_ENV;
+    process.env.OTP_DEV_BYPASS = "true";
+    process.env.SUBSCRIPTION_TEST_MODE = "true";
+
+    try {
+      assert.equal(isDevOtpBypassEnabled(), true);
+      assert.equal(isSubscriptionTestModeEnabled(), true);
+    } finally {
+      process.env.NODE_ENV = previousNode;
+      process.env.VERCEL_ENV = previousVercel;
+      process.env.OTP_DEV_BYPASS = previousOtpBypass;
+      process.env.SUBSCRIPTION_TEST_MODE = previousSubTest;
+    }
+  });
+
+  it("uses RESEND_FROM_EMAIL when configured with production fallback", () => {
+    const previous = process.env.RESEND_FROM_EMAIL;
+    delete process.env.RESEND_FROM_EMAIL;
+    try {
+      assert.equal(resolveResendFromEmail(), "Skiplines <otp@skiplines.in>");
+      process.env.RESEND_FROM_EMAIL = "Custom <custom@example.com>";
+      assert.equal(resolveResendFromEmail(), "Custom <custom@example.com>");
+    } finally {
+      process.env.RESEND_FROM_EMAIL = previous;
+    }
   });
 
   it("enforces 7-day trial access from database timestamps", () => {

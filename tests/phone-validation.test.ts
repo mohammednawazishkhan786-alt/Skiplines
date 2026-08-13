@@ -5,6 +5,7 @@ import {
   isValidIndianMobile,
   maskPhoneForDoctorDisplay,
   normalizePhone,
+  queuePatientPhoneLookupVariants,
 } from "../lib/phone.ts";
 
 describe("Indian mobile validation", () => {
@@ -34,5 +35,16 @@ describe("Indian mobile validation", () => {
     assert.equal(maskPhoneForDoctorDisplay("9876543210"), "******3210");
     assert.equal(maskPhoneForDoctorDisplay("+91 98765 43210"), "******3210");
     assert.equal(maskPhoneForDoctorDisplay(""), "—");
+  });
+
+  it("builds cross-channel lookup variants for queue duplicate checks", () => {
+    assert.deepEqual(queuePatientPhoneLookupVariants("9876543210"), [
+      "9876543210",
+      "919876543210",
+    ]);
+    assert.deepEqual(queuePatientPhoneLookupVariants("919876543210"), [
+      "9876543210",
+      "919876543210",
+    ]);
   });
 });

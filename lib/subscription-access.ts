@@ -3,6 +3,7 @@ import type { Clinic } from "./types";
 /**
  * Runtime subscription configuration.
  * Production defaults are unchanged unless SUBSCRIPTION_TEST_MODE=true.
+ * Test mode is ignored on production runtimes even if the env var is set.
  */
 
 export const PRODUCTION_TRIAL_DAYS = 7;
@@ -15,6 +16,13 @@ export const TEST_SUBSCRIPTION_PLAN = "test_1min";
 export const TEST_PERIOD_MS = 60_000;
 
 export function isSubscriptionTestMode(): boolean {
+  if (
+    process.env.VERCEL_ENV === "production" ||
+    process.env.NODE_ENV === "production"
+  ) {
+    return false;
+  }
+
   return process.env.SUBSCRIPTION_TEST_MODE?.trim().toLowerCase() === "true";
 }
 

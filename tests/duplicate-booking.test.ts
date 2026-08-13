@@ -47,6 +47,12 @@ describe("duplicate booking protection", () => {
       assert.equal(normalizeQueuePatientPhone(null), null);
     });
 
+    it("matches waiting tokens across 10-digit and 91-prefixed phone formats", () => {
+      const queue = read("lib/queue.ts");
+      assert.match(queue, /queuePatientPhoneLookupVariants/);
+      assert.match(queue, /\.in\("patient_phone", lookupPhones\)/);
+    });
+
     it("uses normalizeQueuePatientPhone inside createQueueEntry", () => {
       const queue = read("lib/queue.ts");
       assert.match(queue, /export function normalizeQueuePatientPhone/);

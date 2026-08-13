@@ -1,14 +1,13 @@
 import { upsertEmailOtp } from "@/lib/email-otp-store";
 import { apiError, apiSuccess, parseJsonBody } from "@/lib/api-response";
 import { enforceRateLimit, ipKey } from "@/lib/api-rate-limit";
-import { getResendApiKey } from "@/lib/env";
+import { getResendApiKey, isDevOtpBypassEnabled } from "@/lib/env";
 import {
   deliverOtp,
   generateOtp,
   OTP_TTL_MS,
 } from "@/lib/otp";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
-import { isDevOtpBypassEnabled } from "@/lib/resend-otp";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
 
 function ensureEmailDeliveryConfigured() {
