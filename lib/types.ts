@@ -29,6 +29,7 @@ export type Clinic = {
   updated_at: string | null;
   subscription_status: string;
   trial_ends_at: string | null;
+  trial_used: boolean;
   created_at: string;
 };
 

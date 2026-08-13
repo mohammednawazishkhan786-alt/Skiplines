@@ -84,20 +84,21 @@ export const POST = withSentryApiRoute(
       if (record.verified_at && record.session_token) {
         const verifiedAt = new Date(record.verified_at).getTime();
         if (Date.now() - verifiedAt < VERIFICATION_SESSION_MS) {
-          const existingClinicId = await findClinicIdByEmail(emailNormalized);
+          const existingDoctorId = await findClinicIdByEmail(emailNormalized);
           const response = NextResponse.json({
             success: true,
             verified: true,
             session_token: record.session_token,
-            clinic_id: existingClinicId,
-            logged_in: Boolean(existingClinicId),
-            message: existingClinicId
+            clinic_id: existingDoctorId,
+            doctor_id: existingDoctorId,
+            logged_in: Boolean(existingDoctorId),
+            message: existingDoctorId
               ? "Welcome back — you are signed in."
               : "Email already verified.",
           });
 
-          if (existingClinicId) {
-            setDoctorTokenCookie(response, existingClinicId);
+          if (existingDoctorId) {
+            setDoctorTokenCookie(response, existingDoctorId);
           }
 
           return response;
@@ -130,20 +131,21 @@ export const POST = withSentryApiRoute(
         return apiError("Could not complete OTP verification. Please try again.", 500);
       }
 
-      const existingClinicId = await findClinicIdByEmail(emailNormalized);
+      const existingDoctorId = await findClinicIdByEmail(emailNormalized);
       const response = NextResponse.json({
         success: true,
         verified: true,
         session_token: sessionToken,
-        clinic_id: existingClinicId,
-        logged_in: Boolean(existingClinicId),
-        message: existingClinicId
+        clinic_id: existingDoctorId,
+        doctor_id: existingDoctorId,
+        logged_in: Boolean(existingDoctorId),
+        message: existingDoctorId
           ? "Welcome back — you are signed in."
           : "Email verified successfully.",
       });
 
-      if (existingClinicId) {
-        setDoctorTokenCookie(response, existingClinicId);
+      if (existingDoctorId) {
+        setDoctorTokenCookie(response, existingDoctorId);
       }
 
       return response;

@@ -24,6 +24,7 @@ import {
 } from "@/lib/cashfree-navigation";
 import {
   getTrialDaysRemaining,
+  getSubscriptionLockKind,
   hasDashboardAccess,
   isPaidSubscriptionActive,
   isTrialActive,
@@ -423,6 +424,7 @@ function DashboardContent() {
   const onTrial = isTrialActive(clinic) && !isPaidSubscriptionActive(clinic);
   const trialDaysLeft = getTrialDaysRemaining(clinic);
   const paidActive = isPaidSubscriptionActive(clinic);
+  const lockKind = getSubscriptionLockKind(clinic);
   const bannerError = error ? sanitizeCashfreeErrorMessage(error) : null;
   const bannerMessage = message;
 
@@ -435,9 +437,18 @@ function DashboardContent() {
       ) : null}
 
       {onTrial ? (
-        <div className="rounded-xl border border-teal-200 bg-teal-700 px-5 py-3 text-center text-sm font-medium text-white">
-          7-Day Free Trial Active — {trialDaysLeft} day
-          {trialDaysLeft === 1 ? "" : "s"} left
+        <div className="rounded-xl border border-teal-200 bg-teal-700 px-5 py-4 text-center text-white">
+          <p className="text-sm font-semibold uppercase tracking-wide text-teal-100">
+            7-Day Free Trial
+          </p>
+          <p className="mt-1 text-sm font-medium">
+            Your trial is active. {trialDaysLeft} day
+            {trialDaysLeft === 1 ? "" : "s"} remaining.
+          </p>
+          <p className="mt-1 text-sm text-teal-100">
+            Continue using Skiplines during your free trial, or start ₹999/month
+            now.
+          </p>
         </div>
       ) : null}
 
@@ -472,13 +483,17 @@ function DashboardContent() {
         </p>
       </div>
 
-      {!dashboardAccess ? (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-8 text-center shadow-sm">
-          <h2 className="text-xl font-semibold text-amber-950">
-            Your free trial has ended
+      {onTrial ? (
+        <div className="rounded-2xl border border-teal-200 bg-white p-8 text-center shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-wide text-teal-600">
+            Skiplines Pro
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-teal-950">
+            ₹999 / month
           </h2>
-          <p className="mt-2 text-amber-900/80">
-            Pay ₹999 to unlock Skiplines queue management for 1 month.
+          <p className="mt-2 text-teal-800/80">
+            Start your paid plan now. Your free trial ends immediately after
+            payment is verified.
           </p>
           <button
             type="button"
@@ -494,7 +509,42 @@ function DashboardContent() {
             ) : (
               <>
                 <CreditCard className="h-4 w-4" />
-                Pay ₹999 to Unlock Skiplines for 1 Month
+                Buy ₹999 / month
+              </>
+            )}
+          </button>
+        </div>
+      ) : null}
+
+      {!dashboardAccess ? (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-8 text-center shadow-sm">
+          <h2 className="text-xl font-semibold text-amber-950">
+            {lockKind === "paid_expired"
+              ? "Your subscription has expired."
+              : "Your 7-day free trial has ended."}
+          </h2>
+          <p className="mt-2 text-amber-900/80">
+            {lockKind === "paid_expired"
+              ? "Renew for ₹999/month."
+              : "Continue with Skiplines for ₹999/month."}
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleUnlockPayment()}
+            disabled={paying}
+            className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-6 py-3 font-semibold text-white hover:bg-teal-600 disabled:opacity-60"
+          >
+            {paying ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Opening payment...
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-4 w-4" />
+                {lockKind === "paid_expired"
+                  ? "Renew ₹999/month"
+                  : "Buy ₹999/month"}
               </>
             )}
           </button>

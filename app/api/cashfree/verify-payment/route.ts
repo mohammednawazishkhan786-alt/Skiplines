@@ -6,7 +6,7 @@ import {
 } from "@/lib/cashfree-navigation";
 import { verifyAndActivatePayment } from "@/lib/cashfree-payment";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { hasDashboardAccess } from "@/lib/subscription";
+import { isPaidSubscriptionActive } from "@/lib/subscription";
 import { captureApiError, withSentryApiRoute } from "@/lib/sentry-api";
 
 function redirectToDashboard(clinicId: string | null) {
@@ -26,7 +26,7 @@ async function handlePaymentVerification(
     .eq("id", clinicId)
     .maybeSingle();
 
-  if (clinic && hasDashboardAccess(clinic)) {
+  if (clinic && isPaidSubscriptionActive(clinic)) {
     if (redirectOnResult) {
       return redirectToDashboard(clinicId);
     }

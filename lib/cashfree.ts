@@ -82,6 +82,7 @@ export async function createSubscriptionOrder(input: {
     },
     order_tags: {
       clinic_id: input.clinicId,
+      doctor_id: input.clinicId,
       product: "skiplines_subscription",
     },
   };

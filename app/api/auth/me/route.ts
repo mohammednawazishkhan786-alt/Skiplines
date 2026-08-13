@@ -22,6 +22,7 @@ export const GET = withSentryApiRoute(
     return NextResponse.json({
       authenticated: true,
       clinic_id: payload.clinicId,
+      doctor_id: payload.clinicId,
     });
   },
 );

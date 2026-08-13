@@ -3,12 +3,15 @@ import { setDoctorTokenCookie } from "@/lib/auth/doctor";
 import { insertClinicWithUniqueId } from "@/lib/clinic-registration";
 import { withSentryApiRoute, captureApiError } from "@/lib/sentry-api";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  DUPLICATE_EMAIL_MESSAGE,
-  VERIFICATION_SESSION_MS,
-} from "@/lib/otp";
-import { trialEndsAtFromNow } from "@/lib/subscription";
+import { VERIFICATION_SESSION_MS } from "@/lib/otp";
 import { getSubscriptionAmountInr, getSubscriptionPlanId } from "@/lib/subscription-access";
+import {
+  buildNewDoctorTrialFields,
+  findTrialAbuseConflict,
+  isUniqueTrialViolation,
+  TRIAL_ALREADY_USED_CODE,
+  TRIAL_ENTITLEMENT_USED_MESSAGE,
+} from "@/lib/trial-entitlement";
 import { normalizeEmail } from "@/lib/email";
 import {
   INVALID_PHONE_MESSAGE,
@@ -57,13 +60,26 @@ async function isEmailVerified(emailNormalized: string, sessionToken?: string) {
   return Date.now() - verifiedAt < VERIFICATION_SESSION_MS;
 }
 
-async function findExistingClinicByEmail(emailNormalized: string) {
+async function findExistingDoctorByEmail(emailNormalized: string) {
   const supabase = createAdminClient();
 
   const { data } = await supabase
     .from("clinics")
-    .select("id")
+    .select("id, trial_used")
     .ilike("email", emailNormalized)
+    .limit(1)
+    .maybeSingle();
+
+  return data;
+}
+
+async function findExistingDoctorByPhone(phoneNormalized: string) {
+  const supabase = createAdminClient();
+
+  const { data } = await supabase
+    .from("clinics")
+    .select("id, trial_used")
+    .eq("phone_normalized", phoneNormalized)
     .limit(1)
     .maybeSingle();
 
@@ -145,10 +161,15 @@ export const POST = withSentryApiRoute(
 
       const phone = normalizePhone(phoneRaw);
       const emailNormalized = normalizeEmail(email);
-      const existingClinic = await findExistingClinicByEmail(emailNormalized);
-      if (existingClinic) {
+      const existingByEmail = await findExistingDoctorByEmail(emailNormalized);
+      const existingByPhone = await findExistingDoctorByPhone(phone);
+      const trialConflict = findTrialAbuseConflict(
+        existingByEmail,
+        existingByPhone,
+      );
+      if (trialConflict) {
         return NextResponse.json(
-          { error: DUPLICATE_EMAIL_MESSAGE, code: "TRIAL_ALREADY_USED" },
+          { error: trialConflict.message, code: trialConflict.code },
           { status: 400 },
         );
       }
@@ -168,8 +189,7 @@ export const POST = withSentryApiRoute(
         );
       }
 
-      const trialStartedAt = new Date().toISOString();
-      const trialEndsAt = trialEndsAtFromNow();
+      const trialFields = buildNewDoctorTrialFields();
 
       const supabase = createAdminClient();
       const clinicRow = {
@@ -183,9 +203,7 @@ export const POST = withSentryApiRoute(
         clinic_hours: clinicHours,
         google_review_link: googleReviewLink,
         whatsapp_number: phone,
-        subscription_status: "trialing",
-        trial_started_at: trialStartedAt,
-        trial_ends_at: trialEndsAt,
+        ...trialFields,
         subscription_amount: getSubscriptionAmountInr(),
         subscription_currency: "INR",
         subscription_plan: getSubscriptionPlanId(),
@@ -203,13 +221,26 @@ export const POST = withSentryApiRoute(
       );
 
       if (error || !data) {
+        if (isUniqueTrialViolation(error)) {
+          return NextResponse.json(
+            {
+              error: TRIAL_ENTITLEMENT_USED_MESSAGE,
+              code: TRIAL_ALREADY_USED_CODE,
+            },
+            { status: 400 },
+          );
+        }
+
         return NextResponse.json(
           { error: error?.message ?? "Registration failed." },
           { status: 500 },
         );
       }
 
-      const response = NextResponse.json({ clinic: data }, { status: 201 });
+      const response = NextResponse.json(
+        { clinic: data, doctor_id: data.id },
+        { status: 201 },
+      );
       setDoctorTokenCookie(response, data.id);
       return response;
     } catch (error) {

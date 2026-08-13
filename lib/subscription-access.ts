@@ -62,9 +62,48 @@ export function subscriptionPaymentRequiredMessage(): string {
   return `Your free trial has ended. Pay ₹${amount} to unlock Skiplines for ${period}.`;
 }
 
+export function subscriptionExpiredRenewalMessage(): string {
+  const amount = getSubscriptionAmountInr();
+  return `Your subscription has expired. Renew for ₹${amount}/month.`;
+}
+
 export function subscriptionPaymentFailedMessage(): string {
   const amount = getSubscriptionAmountInr();
   return `Your last payment failed. Pay ₹${amount} to reactivate Skiplines.`;
+}
+
+export type SubscriptionLockKind = "none" | "trial_expired" | "paid_expired";
+
+export function getSubscriptionLockKind(
+  clinic: Pick<
+    Clinic,
+    "subscription_status" | "trial_ends_at" | "subscription_expires_at"
+  >,
+): SubscriptionLockKind {
+  if (hasDashboardAccess(clinic)) {
+    return "none";
+  }
+
+  if (clinic.subscription_expires_at) {
+    return "paid_expired";
+  }
+
+  return "trial_expired";
+}
+
+/**
+ * Buying ₹999 during a live trial must end the trial immediately.
+ * Already-elapsed trial_ends_at is left unchanged.
+ */
+export function trialEndsAtOnPaidActivation(
+  trialEndsAt: string | null | undefined,
+  activatedAt = new Date(),
+): string {
+  if (trialEndsAt && new Date(trialEndsAt) <= activatedAt) {
+    return trialEndsAt;
+  }
+
+  return activatedAt.toISOString();
 }
 
 /** Production trial length in days (unchanged when test mode is off). */
@@ -144,12 +183,12 @@ export function getSubscriptionAccessError(
 
   const status = normalizeSubscriptionStatus(clinic.subscription_status);
 
-  if (status === "pending_mandate" || status === "pending_payment") {
-    return subscriptionPaymentRequiredMessage();
-  }
-
   if (status === "payment_failed") {
     return subscriptionPaymentFailedMessage();
+  }
+
+  if (getSubscriptionLockKind(clinic) === "paid_expired") {
+    return subscriptionExpiredRenewalMessage();
   }
 
   return subscriptionPaymentRequiredMessage();

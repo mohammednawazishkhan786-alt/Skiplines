@@ -6,13 +6,16 @@ import {
 } from "@/lib/cashfree";
 import { upsertPaymentTransaction } from "@/lib/payment-audit";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getSubscriptionAmountInr } from "@/lib/subscription-access";
+import {
+  getSubscriptionAmountInr,
+  isPaidSubscriptionActive,
+  trialEndsAtOnPaidActivation,
+} from "@/lib/subscription-access";
 import {
   extendMonthlyPeriod,
   resolveSubscriptionPlan,
   SUBSCRIPTION_CURRENCY,
 } from "@/lib/subscription-periods";
-import { isPaidSubscriptionActive } from "@/lib/subscription";
 
 type ClinicPaymentRow = {
   id: string;
@@ -23,6 +26,7 @@ type ClinicPaymentRow = {
   current_period_end: string | null;
   next_billing_date: string | null;
   last_payment_at: string | null;
+  trial_ends_at?: string | null;
 };
 
 export async function activateClinicSubscription(
@@ -34,7 +38,7 @@ export async function activateClinicSubscription(
   const { data: existing } = await supabase
     .from("clinics")
     .select(
-      "subscription_expires_at, cashfree_order_id, subscription_status, current_period_end",
+      "subscription_expires_at, cashfree_order_id, subscription_status, current_period_end, trial_ends_at",
     )
     .eq("id", clinicId)
     .single();
@@ -67,8 +71,12 @@ export async function activateClinicSubscription(
     };
   }
 
-  const period = extendMonthlyPeriod(existing.current_period_end);
-  const now = new Date().toISOString();
+  const activatedAt = new Date();
+  // Trial conversion and expired renewal both start from verified payment time.
+  // Remaining trial days are not preserved. Remaining paid time is not
+  // destroyed here because an already-active paid period returns above.
+  const period = extendMonthlyPeriod(null, activatedAt);
+  const now = activatedAt.toISOString();
   const amount = getSubscriptionAmountInr();
   const plan = resolveSubscriptionPlan();
 
@@ -86,6 +94,11 @@ export async function activateClinicSubscription(
       current_period_end: period.current_period_end,
       next_billing_date: period.next_billing_date,
       last_payment_at: period.last_payment_at,
+      trial_ends_at: trialEndsAtOnPaidActivation(
+        existing.trial_ends_at,
+        activatedAt,
+      ),
+      trial_used: true,
       expired_at: null,
       updated_at: now,
     })
@@ -121,10 +134,17 @@ export async function activateClinicSubscription(
   };
 }
 
-function extractClinicIdFromOrderTags(
+function extractDoctorIdFromOrderTags(
   tags: Record<string, string> | undefined | null,
 ) {
-  return tags?.clinic_id?.trim() || null;
+  const doctorId = tags?.doctor_id?.trim();
+  const clinicId = tags?.clinic_id?.trim();
+
+  if (doctorId && clinicId && doctorId !== clinicId) {
+    return null;
+  }
+
+  return doctorId || clinicId || null;
 }
 
 export async function verifyAndActivatePayment(clinicId: string, orderId: string) {
@@ -178,14 +198,14 @@ export async function verifyAndActivatePayment(clinicId: string, orderId: string
     };
   }
 
-  const taggedClinicId = extractClinicIdFromOrderTags(
+  const taggedDoctorId = extractDoctorIdFromOrderTags(
     order.order_tags as Record<string, string> | undefined,
   );
-  if (taggedClinicId && taggedClinicId !== clinicId) {
+  if (taggedDoctorId && taggedDoctorId !== clinicId) {
     return {
       ok: false as const,
       status: 403,
-      error: "This payment does not belong to your clinic.",
+      error: "This payment does not belong to your doctor account.",
     };
   }
 
@@ -230,11 +250,11 @@ export async function activateFromWebhookOrder(orderId: string) {
     return { ok: false as const, status: "order_fetch_failed" as const };
   }
 
-  const clinicId = extractClinicIdFromOrderTags(
+  const doctorId = extractDoctorIdFromOrderTags(
     order.order_tags as Record<string, string> | undefined,
   );
-  if (!clinicId) {
-    return { ok: false as const, status: "missing_clinic" as const };
+  if (!doctorId) {
+    return { ok: false as const, status: "missing_doctor" as const };
   }
 
   const expectedAmount = resolveSkipelinesSubscriptionAmount();
@@ -248,7 +268,7 @@ export async function activateFromWebhookOrder(orderId: string) {
     return { ok: false as const, status: "not_paid" as const };
   }
 
-  const result = await activateClinicSubscription(clinicId, orderId);
+  const result = await activateClinicSubscription(doctorId, orderId);
   if (!result.ok) {
     return { ok: false as const, status: "activation_failed" as const };
   }
@@ -256,7 +276,8 @@ export async function activateFromWebhookOrder(orderId: string) {
   return {
     ok: true as const,
     status: result.alreadyActive ? "already_active" : "activated",
-    clinicId,
+    clinicId: doctorId,
+    doctorId,
     orderId,
   };
 }

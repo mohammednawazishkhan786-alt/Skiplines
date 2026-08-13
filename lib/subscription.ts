@@ -15,21 +15,27 @@ export {
   TRIAL_DAYS,
   SUBSCRIPTION_AMOUNT_INR,
   getSubscriptionAccessError,
+  getSubscriptionLockKind,
   getTrialDaysRemaining,
   hasDashboardAccess,
   isPaidSubscriptionActive,
   isTrialActive,
   normalizeSubscriptionStatus,
   trialEndsAtFromNow,
+  trialEndsAtOnPaidActivation,
   firstChargeTimeFromNow,
 } from "./subscription-access";
 
-import { hasDashboardAccess } from "./subscription-access";
+import { isPaidSubscriptionActive } from "./subscription-access";
 
+/**
+ * Skip Cashfree return-URL verification only when a paid period is already active.
+ * Trial access must NOT skip verification — doctors may buy ₹999 during trial.
+ */
 export function shouldSkipCashfreePaymentFlow(
-  clinic: Parameters<typeof hasDashboardAccess>[0],
+  clinic: Parameters<typeof isPaidSubscriptionActive>[0],
 ) {
-  return hasDashboardAccess(clinic);
+  return isPaidSubscriptionActive(clinic);
 }
 
 export function extendSubscriptionExpiry(current: string | null | undefined) {
