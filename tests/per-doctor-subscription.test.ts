@@ -92,12 +92,26 @@ describe("per-doctor ₹999/month subscription", () => {
     assert.ok(getSubscriptionAccessError(expired)?.includes("₹999"));
   });
 
-  it("shows the ₹999 option during trial in the dashboard", () => {
+  it("shows Subscribe Now during an active 7-day trial", () => {
     const dashboard = read("app/dashboard/page.tsx");
-    assert.match(dashboard, /Skiplines Pro/);
-    assert.match(dashboard, /Buy ₹999 \/ month/);
-    assert.match(dashboard, /onTrial/);
+    assert.match(dashboard, /onTrial \? \(/);
+    assert.match(dashboard, /₹999 \/ Month/);
+    assert.match(dashboard, /Subscribe Now/);
+    assert.match(dashboard, /handleUnlockPayment/);
     assert.match(dashboard, /\/api\/cashfree\/create-order/);
+    assert.doesNotMatch(dashboard, /Buy ₹999 \/ month/);
+  });
+
+  it("Subscribe Now uses the existing Cashfree create-order flow", () => {
+    const dashboard = read("app/dashboard/page.tsx");
+    assert.match(dashboard, /Subscribe Now[\s\S]*handleUnlockPayment|handleUnlockPayment[\s\S]*Subscribe Now/);
+    assert.match(dashboard, /fetch\("\/api\/cashfree\/create-order"/);
+    assert.match(dashboard, /openCashfreeCheckout/);
+    assert.match(
+      read("app/api/cashfree/create-order/route.ts"),
+      /isPaidSubscriptionActive\(clinic\)/,
+    );
+    assert.doesNotMatch(dashboard, /create-subscription/);
   });
 
   it("does not skip Cashfree verification while trial is still active", () => {
@@ -183,7 +197,8 @@ describe("per-doctor ₹999/month subscription", () => {
     assert.equal(getSubscriptionLockKind(expiredPaid), "paid_expired");
     assert.ok(getSubscriptionAccessError(expiredPaid)?.includes("subscription has expired"));
     assert.ok(getSubscriptionAccessError(expiredPaid)?.includes("₹999"));
-    assert.match(read("app/dashboard/page.tsx"), /Renew ₹999\/month/);
+    assert.match(read("app/dashboard/page.tsx"), /Renew Subscription/);
+    assert.match(read("app/dashboard/page.tsx"), /!dashboardAccess \? \(/);
   });
 
   it("renewal after expiry starts a fresh month from payment time", () => {
@@ -292,5 +307,49 @@ describe("per-doctor ₹999/month subscription", () => {
     const payment = read("lib/cashfree-payment.ts");
     assert.match(payment, /trialEndsAtOnPaidActivation/);
     assert.match(payment, /extendMonthlyPeriod\(null, activatedAt\)/);
+  });
+
+  it("successful verified payment sets status active for one month from activation time", () => {
+    const payment = read("lib/cashfree-payment.ts");
+    assert.match(payment, /subscription_status: "active"/);
+    assert.match(payment, /subscription_expires_at: period.subscription_expires_at/);
+    assert.match(payment, /isCashfreeOrderPaid/);
+    assert.match(read("app/api/cashfree/verify-payment/route.ts"), /verifyAndActivatePayment/);
+    assert.match(read("lib/cashfree-webhook-handler.ts"), /activateFromWebhookOrder/);
+  });
+
+  it("paid-active dashboard shows expiry and does not offer a second subscribe CTA", () => {
+    const dashboard = read("app/dashboard/page.tsx");
+    assert.match(dashboard, /paidActive/);
+    assert.match(
+      dashboard,
+      /Active until \$\{new Date\(clinic.subscription_expires_at!\)\.toLocaleDateString\(\)\}/,
+    );
+    assert.match(dashboard, /\{onTrial \? \(/);
+    assert.match(dashboard, /\{!dashboardAccess \? \(/);
+    assert.match(
+      read("app/api/cashfree/create-order/route.ts"),
+      /Subscription is already active\./,
+    );
+  });
+
+  it("forged or unauthorized payment cannot activate a subscription", () => {
+    assert.match(
+      read("lib/cashfree-webhook-handler.ts"),
+      /verifyCashfreeWebhook\(signature, rawBody, timestamp\)/,
+    );
+    assert.match(
+      read("app/api/cashfree/verify-payment/route.ts"),
+      /requireDoctorAuth\(request, clinicId\)/,
+    );
+    assert.match(
+      read("app/api/cashfree/create-order/route.ts"),
+      /requireDoctorAuth\(request, clinicId\)/,
+    );
+    const payment = read("lib/cashfree-payment.ts");
+    assert.match(payment, /isCashfreeOrderPaid/);
+    assert.match(payment, /orderAmount !== expectedAmount/);
+    assert.match(payment, /taggedDoctorId !== clinicId/);
+    assert.doesNotMatch(read("app/dashboard/page.tsx"), /activateClinicSubscription/);
   });
 });

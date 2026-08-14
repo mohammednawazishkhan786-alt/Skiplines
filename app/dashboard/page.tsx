@@ -492,11 +492,12 @@ function DashboardContent() {
             Skiplines Pro
           </p>
           <h2 className="mt-2 text-xl font-semibold text-teal-950">
-            ₹999 / month
+            ₹999 / Month
           </h2>
           <p className="mt-2 text-teal-800/80">
-            Start your paid plan now. Your free trial ends immediately after
-            payment is verified.
+            Subscribe any time during your trial. Paid access starts from
+            verified payment and lasts 1 month. Remaining trial days are not
+            added.
           </p>
           <button
             type="button"
@@ -512,7 +513,7 @@ function DashboardContent() {
             ) : (
               <>
                 <CreditCard className="h-4 w-4" />
-                Buy ₹999 / month
+                Subscribe Now
               </>
             )}
           </button>
@@ -526,10 +527,11 @@ function DashboardContent() {
               ? "Your subscription has expired."
               : "Your 7-day free trial has ended."}
           </h2>
+          <p className="mt-2 text-lg font-semibold text-amber-950">₹999 / Month</p>
           <p className="mt-2 text-amber-900/80">
             {lockKind === "paid_expired"
-              ? "Renew for ₹999/month."
-              : "Continue with Skiplines for ₹999/month."}
+              ? "Renew to unlock the dashboard for another month. Your clinic, queue, and Doctor ID are kept."
+              : "Subscribe to unlock the dashboard for 1 month. Your clinic, queue, and Doctor ID are kept."}
           </p>
           <button
             type="button"
@@ -545,9 +547,7 @@ function DashboardContent() {
             ) : (
               <>
                 <CreditCard className="h-4 w-4" />
-                {lockKind === "paid_expired"
-                  ? "Renew ₹999/month"
-                  : "Buy ₹999/month"}
+                Renew Subscription
               </>
             )}
           </button>
