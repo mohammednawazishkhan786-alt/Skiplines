@@ -66,9 +66,9 @@ export function getWhatsAppCallNextTemplateLanguage(): string {
   return readEnv("WHATSAPP_CALL_NEXT_TEMPLATE_LANGUAGE") ?? "en";
 }
 
-/** "token" (default), "token,tracker", or "none" — must match approved Meta template body variables. */
+/** "name,token,tracker", "token,tracker" (default), "token", or "none" — must match approved Meta template body variables. */
 export function getWhatsAppCallNextTemplateBodyParams(): string {
-  return readEnv("WHATSAPP_CALL_NEXT_TEMPLATE_BODY_PARAMS") ?? "token";
+  return readEnv("WHATSAPP_CALL_NEXT_TEMPLATE_BODY_PARAMS") ?? "token,tracker";
 }
 
 export function hasWhatsAppCredentials(): boolean {

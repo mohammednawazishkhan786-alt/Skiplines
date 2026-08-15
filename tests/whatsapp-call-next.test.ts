@@ -74,7 +74,7 @@ describe("Call Next WhatsApp notifications", () => {
     assert.notEqual(tenDigit.to, "9191876543210");
   });
 
-  it("builds template payload with correct name, language, and one body parameter by default", () => {
+  it("builds template payload with correct name, language, and one body parameter when configured", () => {
     const payload = buildCallNextTemplatePayload({
       to: "9876543210",
       templateName: "patient_called",
@@ -91,7 +91,39 @@ describe("Call Next WhatsApp notifications", () => {
     assert.equal(payload.template.components[0].parameters[0].text, "5");
   });
 
-  it("supports two body parameters when tracker is configured", () => {
+  it("supports patient name as the first template body parameter when configured", () => {
+    const payload = buildCallNextTemplatePayload({
+      to: "9876543210",
+      templateName: "patient_called",
+      languageCode: "en",
+      tokenNumber: 5,
+      patientName: "Rahul Kumar",
+      liveTrackerUrl: "https://www.skiplines.in/live/token-uuid",
+      bodyParams: ["name", "token", "tracker"],
+    });
+
+    assert.equal(payload.template.components[0].parameters.length, 3);
+    assert.equal(payload.template.components[0].parameters[0].text, "Rahul Kumar");
+    assert.equal(payload.template.components[0].parameters[1].text, "5");
+    assert.equal(
+      payload.template.components[0].parameters[2].text,
+      "https://www.skiplines.in/live/token-uuid",
+    );
+  });
+
+  it("falls back to Patient when name is missing from template payload", () => {
+    const payload = buildCallNextTemplatePayload({
+      to: "9876543210",
+      templateName: "patient_called",
+      languageCode: "en",
+      tokenNumber: 5,
+      bodyParams: ["name", "token"],
+    });
+
+    assert.equal(payload.template.components[0].parameters[0].text, "Patient");
+  });
+
+  it("supports token and tracker body parameters by default", () => {
     const payload = buildCallNextTemplatePayload({
       to: "9876543210",
       templateName: "patient_called",
@@ -134,11 +166,14 @@ describe("Call Next WhatsApp notifications", () => {
     }
   });
 
-  it("defaults body params to token only", () => {
+  it("defaults body params to token and tracker", () => {
     const previous = process.env.WHATSAPP_CALL_NEXT_TEMPLATE_BODY_PARAMS;
     delete process.env.WHATSAPP_CALL_NEXT_TEMPLATE_BODY_PARAMS;
     try {
-      assert.deepEqual(getWhatsAppCallNextTemplateBodyParams(), ["token"]);
+      assert.deepEqual(getWhatsAppCallNextTemplateBodyParams(), [
+        "token",
+        "tracker",
+      ]);
     } finally {
       process.env.WHATSAPP_CALL_NEXT_TEMPLATE_BODY_PARAMS = previous;
     }
@@ -164,10 +199,11 @@ describe("Call Next WhatsApp notifications", () => {
     assert.equal(twelveDigit.to, "916123456789");
   });
 
-  it("uses Hindi your-turn wording in dev text fallback body", () => {
-    const body = buildCallNextTextBody(5);
+  it("uses Hindi your-turn wording with patient name in dev text fallback body", () => {
+    const body = buildCallNextTextBody(5, "Rahul");
     assert.match(body, /Skiplines/);
-    assert.match(body, /Aapki baari aa gayi hai/);
+    assert.match(body, /Hi Rahul/);
+    assert.match(body, /aapki baari aa gayi hai/i);
     assert.match(body, /Kripya doctor ke paas jaiye/);
     assert.match(body, /Token: #5/);
   });
@@ -366,6 +402,7 @@ describe("Call Next WhatsApp notifications", () => {
     assert.match(route, /if \(called\.patient_phone\)/);
     assert.match(route, /tokenId: called\.id/);
     assert.match(route, /patientPhone: called\.patient_phone/);
+    assert.match(route, /patientName: called\.patient_name/);
     assert.match(route, /tokenNumber: called\.token_number/);
     assert.doesNotMatch(route, /for \(const .* of/);
   });

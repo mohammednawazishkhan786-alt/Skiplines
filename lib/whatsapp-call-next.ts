@@ -7,10 +7,11 @@ export type CallNextNotifyParams = {
   clinicId: string;
   tokenId: string;
   patientPhone: string;
+  patientName?: string | null;
   tokenNumber: number;
 };
 
-export type CallNextTemplateBodyParam = "token" | "tracker";
+export type CallNextTemplateBodyParam = "name" | "token" | "tracker";
 
 export type WhatsAppSendResult =
   | { success: true; messageId?: string }
@@ -59,7 +60,9 @@ function getWhatsAppCallNextTemplateLanguage(): string {
  * Examples: "token" (default), "token,tracker", "none"
  */
 export function getWhatsAppCallNextTemplateBodyParams(): CallNextTemplateBodyParam[] {
-  const raw = (readEnv("WHATSAPP_CALL_NEXT_TEMPLATE_BODY_PARAMS") ?? "token")
+  const raw = (
+    readEnv("WHATSAPP_CALL_NEXT_TEMPLATE_BODY_PARAMS") ?? "token,tracker"
+  )
     .toLowerCase()
     .trim();
 
@@ -67,7 +70,11 @@ export function getWhatsAppCallNextTemplateBodyParams(): CallNextTemplateBodyPar
     return [];
   }
 
-  const allowed = new Set<CallNextTemplateBodyParam>(["token", "tracker"]);
+  const allowed = new Set<CallNextTemplateBodyParam>([
+    "name",
+    "token",
+    "tracker",
+  ]);
   const params: CallNextTemplateBodyParam[] = [];
 
   for (const part of raw.split(",")) {
@@ -195,10 +202,21 @@ export function formatMetaErrorForLog(
   return parts.join(" ");
 }
 
+/** Sanitize patient name for WhatsApp template text parameters. */
+export function sanitizePatientNameForTemplate(name: string | null | undefined): string {
+  const trimmed = name?.trim() ?? "";
+  if (!trimmed) return "Patient";
+  return trimmed.replace(/[\n\r\t]+/g, " ").slice(0, 80);
+}
+
 /** Dev/non-template fallback body — production uses an approved Meta template. */
-export function buildCallNextTextBody(tokenNumber: number): string {
+export function buildCallNextTextBody(
+  tokenNumber: number,
+  patientName?: string | null,
+): string {
+  const name = sanitizePatientNameForTemplate(patientName);
   return `🔔 Skiplines
-Aapki baari aa gayi hai.
+Hi ${name}, aapki baari aa gayi hai.
 Kripya doctor ke paas jaiye.
 Token: #${tokenNumber}`;
 }
@@ -208,6 +226,7 @@ export function buildCallNextTemplatePayload(params: {
   templateName: string;
   languageCode: string;
   tokenNumber: number;
+  patientName?: string | null;
   liveTrackerUrl?: string;
   bodyParams?: CallNextTemplateBodyParam[];
 }) {
@@ -215,7 +234,12 @@ export function buildCallNextTemplatePayload(params: {
   const parameters: Array<{ type: "text"; text: string }> = [];
 
   for (const key of bodyParams) {
-    if (key === "token") {
+    if (key === "name") {
+      parameters.push({
+        type: "text",
+        text: sanitizePatientNameForTemplate(params.patientName),
+      });
+    } else if (key === "token") {
       parameters.push({ type: "text", text: String(params.tokenNumber) });
     } else if (key === "tracker" && params.liveTrackerUrl) {
       parameters.push({ type: "text", text: params.liveTrackerUrl });
@@ -371,7 +395,7 @@ function buildFailureLogMessage(
 export async function notifyCallNextPatient(
   params: CallNextNotifyParams,
 ): Promise<boolean> {
-  const { clinicId, tokenId, patientPhone, tokenNumber } = params;
+  const { clinicId, tokenId, patientPhone, patientName, tokenNumber } = params;
 
   try {
     if (!patientPhone.trim()) {
@@ -399,6 +423,7 @@ export async function notifyCallNextPatient(
         templateName,
         languageCode: getWhatsAppCallNextTemplateLanguage(),
         tokenNumber,
+        patientName,
         liveTrackerUrl,
       });
 
@@ -423,7 +448,7 @@ export async function notifyCallNextPatient(
         return false;
       }
 
-      const body = buildCallNextTextBody(tokenNumber);
+      const body = buildCallNextTextBody(tokenNumber, patientName);
       outboundPayload = {
         messaging_product: "whatsapp",
         to: dialTo,

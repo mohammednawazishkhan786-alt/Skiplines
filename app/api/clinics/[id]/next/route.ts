@@ -34,6 +34,7 @@ export const POST = withSentryApiRoute(
         status: string;
         created_at: string;
         patient_phone: string | null;
+        patient_name: string | null;
       };
 
       if (called.patient_phone) {
@@ -41,6 +42,7 @@ export const POST = withSentryApiRoute(
           clinicId: id,
           tokenId: called.id,
           patientPhone: called.patient_phone,
+          patientName: called.patient_name,
           tokenNumber: called.token_number,
         });
       }
@@ -73,7 +75,7 @@ export const POST = withSentryApiRoute(
 
     const { data: nextPatient, error: nextError } = await supabase
       .from("tokens")
-      .select("id, token_number, patient_phone")
+      .select("id, token_number, patient_phone, patient_name")
       .eq("clinic_id", id)
       .eq("status", "waiting")
       .order("queue_position", { ascending: true })
@@ -96,7 +98,7 @@ export const POST = withSentryApiRoute(
       .update({ status: "called" })
       .eq("id", nextPatient.id)
       .eq("status", "waiting")
-      .select("id, token_number, status, created_at, patient_phone")
+      .select("id, token_number, status, created_at, patient_phone, patient_name")
       .maybeSingle();
 
     if (callError) {
@@ -120,6 +122,7 @@ export const POST = withSentryApiRoute(
         clinicId: id,
         tokenId: called.id,
         patientPhone: called.patient_phone,
+        patientName: called.patient_name,
         tokenNumber: called.token_number,
       });
     }
