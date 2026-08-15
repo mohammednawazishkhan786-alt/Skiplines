@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireDoctorSubscription } from "@/lib/subscription-guard";
+import { requireDoctorAuth } from "@/lib/auth/doctor";
+import { hasDashboardAccess } from "@/lib/subscription";
 import { withSentryApiRoute } from "@/lib/sentry-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -20,9 +21,9 @@ export const GET = withSentryApiRoute(
   async function GET(request: Request, context: RouteContext) {
     const { id } = await context.params;
 
-    const access = await requireDoctorSubscription(request, id);
-    if (access instanceof Response) {
-      return access;
+    const authError = requireDoctorAuth(request, id);
+    if (authError) {
+      return authError;
     }
 
     const supabase = createAdminClient();
@@ -35,6 +36,15 @@ export const GET = withSentryApiRoute(
 
     if (clinicError || !clinic) {
       return NextResponse.json({ error: "Clinic not found." }, { status: 404 });
+    }
+
+    if (!hasDashboardAccess(clinic)) {
+      return NextResponse.json({
+        clinic,
+        waiting: [],
+        currentlyServing: null,
+        subscription_locked: true,
+      });
     }
 
     const { data: waiting, error: waitingError } = await supabase

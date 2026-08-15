@@ -90,6 +90,10 @@ describe("per-doctor ₹999/month subscription", () => {
     assert.equal(hasDashboardAccess(expired), false);
     assert.ok(getSubscriptionAccessError(expired)?.includes("free trial has ended"));
     assert.ok(getSubscriptionAccessError(expired)?.includes("₹999"));
+    const dashboard = read("app/dashboard/page.tsx");
+    assert.match(dashboard, /Your free trial has ended\./);
+    assert.match(dashboard, /BUY NOW — ₹999 \/ MONTH/);
+    assert.match(dashboard, /sessionExpired \? \([\s\S]*Sign in with Email OTP/);
   });
 
   it("shows Subscribe Now during an active 7-day trial", () => {
@@ -197,7 +201,7 @@ describe("per-doctor ₹999/month subscription", () => {
     assert.equal(getSubscriptionLockKind(expiredPaid), "paid_expired");
     assert.ok(getSubscriptionAccessError(expiredPaid)?.includes("subscription has expired"));
     assert.ok(getSubscriptionAccessError(expiredPaid)?.includes("₹999"));
-    assert.match(read("app/dashboard/page.tsx"), /Renew Subscription/);
+    assert.match(read("app/dashboard/page.tsx"), /BUY NOW — ₹999 \/ MONTH/);
     assert.match(read("app/dashboard/page.tsx"), /!dashboardAccess \? \(/);
   });
 
@@ -283,10 +287,11 @@ describe("per-doctor ₹999/month subscription", () => {
       read("app/api/clinics/[id]/next/route.ts"),
       /requireDoctorSubscription/,
     );
-    assert.match(
-      read("app/api/clinics/[id]/route.ts"),
-      /requireDoctorSubscription/,
-    );
+    const dashboardRoute = read("app/api/clinics/[id]/route.ts");
+    assert.match(dashboardRoute, /requireDoctorAuth\(request, id\)/);
+    assert.match(dashboardRoute, /hasDashboardAccess\(clinic\)/);
+    assert.match(dashboardRoute, /subscription_locked: true/);
+    assert.doesNotMatch(dashboardRoute, /requireDoctorSubscription/);
   });
 
   it("does not invent a second payment provider or yearly plan", () => {

@@ -403,17 +403,20 @@ function DashboardContent() {
   }
 
   if (error && !data) {
+    const sessionExpired = error.includes("session expired");
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center text-red-700">
         {error}
-        <div className="mt-4">
-          <Link
-            href="/login"
-            className="inline-block rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600"
-          >
-            Sign in with Email OTP
-          </Link>
-        </div>
+        {sessionExpired ? (
+          <div className="mt-4">
+            <Link
+              href="/login"
+              className="inline-block rounded-xl bg-teal-700 px-5 py-3 font-medium text-white hover:bg-teal-600"
+            >
+              Sign in with Email OTP
+            </Link>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -525,13 +528,12 @@ function DashboardContent() {
           <h2 className="text-xl font-semibold text-amber-950">
             {lockKind === "paid_expired"
               ? "Your subscription has expired."
-              : "Your 7-day free trial has ended."}
+              : "Your free trial has ended."}
           </h2>
-          <p className="mt-2 text-lg font-semibold text-amber-950">₹999 / Month</p>
           <p className="mt-2 text-amber-900/80">
             {lockKind === "paid_expired"
-              ? "Renew to unlock the dashboard for another month. Your clinic, queue, and Doctor ID are kept."
-              : "Subscribe to unlock the dashboard for 1 month. Your clinic, queue, and Doctor ID are kept."}
+              ? "Pay ₹999 to unlock Skiplines for another month."
+              : "Subscribe for ₹999/month to continue using Skiplines."}
           </p>
           <button
             type="button"
@@ -547,7 +549,7 @@ function DashboardContent() {
             ) : (
               <>
                 <CreditCard className="h-4 w-4" />
-                Renew Subscription
+                BUY NOW — ₹999 / MONTH
               </>
             )}
           </button>
