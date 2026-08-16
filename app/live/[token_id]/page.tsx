@@ -19,6 +19,7 @@ export default function LiveTrackerPage() {
   const [data, setData] = useState<LiveData | null>(null);
   const [loading, setLoading] = useState(true);
   const [shifting, setShifting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +27,9 @@ export default function LiveTrackerPage() {
     if (!tokenId) return;
 
     try {
-      const response = await fetch(`/api/queue/${tokenId}`);
+      const response = await fetch(`/api/queue/${tokenId}`, {
+        cache: "no-store",
+      });
       const payload = await response.json();
 
       if (!response.ok) {
@@ -43,6 +46,17 @@ export default function LiveTrackerPage() {
       setLoading(false);
     }
   }, [tokenId]);
+
+  async function handleRefresh() {
+    if (!tokenId || refreshing) return;
+
+    setRefreshing(true);
+    try {
+      await loadData();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     if (!tokenId) {
@@ -181,11 +195,14 @@ export default function LiveTrackerPage() {
 
         <button
           type="button"
-          onClick={() => void loadData()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-teal-200 px-4 py-3 text-sm font-medium text-teal-800 hover:bg-teal-50"
+          onClick={() => void handleRefresh()}
+          disabled={refreshing}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-teal-200 px-4 py-3 text-sm font-medium text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <RefreshCw className="h-4 w-4" />
-          Refresh
+          <RefreshCw
+            className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+          />
+          {refreshing ? "Refreshing..." : "Refresh"}
         </button>
 
         {positionInQueue > 0 && entry.status === "waiting" ? (
