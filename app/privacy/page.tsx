@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/privacy" },
 };
 
-const LAST_UPDATED = "August 9, 2026";
+const LAST_UPDATED = "August 17, 2026";
 
 export default function PrivacyPage() {
   return (
@@ -73,6 +73,12 @@ export default function PrivacyPage() {
               <li>
                 <strong>Technical data:</strong> IP address, browser type, and
                 usage logs collected automatically when you access our website.
+              </li>
+              <li>
+                <strong>Analytics and advertising cookies:</strong> we use Google
+                Analytics and Meta Pixel to understand how visitors use the
+                Service and to measure ads. These tools may collect device
+                identifiers, pages viewed, and similar usage data.
               </li>
             </ul>
           </section>
@@ -243,6 +249,13 @@ export default function PrivacyPage() {
               <li>
                 <strong>Cashfree:</strong> subscription payment processing (clinic
                 billing data only).
+              </li>
+              <li>
+                <strong>Google Analytics:</strong> website usage measurement.
+              </li>
+              <li>
+                <strong>Meta (Facebook Pixel):</strong> advertising measurement
+                and PageView tracking.
               </li>
             </ul>
             <p className="mt-3">
